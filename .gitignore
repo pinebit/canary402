@@ -1,0 +1,18 @@
+# Local credentials and machine-specific configuration.
+.env
+.env.*
+!.env.example
+
+# Editor and operating-system files.
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Build and test output. The leading slash is important: an unanchored
+# `canary402` rule also ignores the source directory cmd/canary402/.
+/canary402
+coverage.out
+coverage.*
+*.test
+*.log

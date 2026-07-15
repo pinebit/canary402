@@ -1,0 +1,25 @@
+# CRD-managed Agents are isolated from private cluster ranges by default.
+# Allow the Canary402 wrapper to reach only the deterministic Canary402 API.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: canary402-api-egress
+  namespace: agent-canary402
+  labels:
+    app.kubernetes.io/name: canary402
+    app.kubernetes.io/component: agent-egress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: llm
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: canary402
+      ports:
+        - protocol: TCP
+          port: 8080

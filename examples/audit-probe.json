@@ -1,0 +1,9 @@
+{
+  "url": "https://seller.example.com/services/weather/current",
+  "method": "POST",
+  "body": {
+    "city": "Istanbul"
+  },
+  "expectation": "The response contains a numeric current temperature for Istanbul.",
+  "pay": false
+}

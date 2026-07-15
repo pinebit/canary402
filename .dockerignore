@@ -1,0 +1,13 @@
+.env
+.env.*
+.git
+.gitignore
+idea.md
+README.md
+deploy
+examples
+scripts
+*.log
+/canary402
+coverage.out
+coverage.*

@@ -1,0 +1,28 @@
+# Obol v0.13.0 names its controller-owned ReferenceGrant using only the
+# ServiceOffer name. The llm/canary402 and agent-canary402/canary402 offers
+# therefore collide. This additive grant preserves the x402 backend Service
+# references needed by HTTPRoutes originating in both offer namespaces. The
+# filename is retained for compatibility with the existing publish scripts.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: canary402-llm-x402-backends
+  namespace: x402
+  labels:
+    app.kubernetes.io/name: canary402
+    app.kubernetes.io/component: routing-workaround
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: llm
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: agent-canary402
+  to:
+    - group: ""
+      kind: Service
+      name: x402-verifier
+    - group: ""
+      kind: Service
+      name: obol-skill-md

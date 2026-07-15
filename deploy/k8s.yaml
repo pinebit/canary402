@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: canary402-reports
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: canary402
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: canary402
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: canary402
+    app.kubernetes.io/component: agent-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: canary402
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: canary402
+        app.kubernetes.io/component: agent-service
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: canary402
+          image: canary402:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: CANARY_REPORT_DIR
+              value: /data/reports
+            - name: CANARY_MODEL
+              value: openrouter/auto
+            - name: CANARY_MAX_CONCURRENT
+              value: "4"
+            - name: CANARY_TARGET_TIMEOUT_SECONDS
+              value: "20"
+            - name: CANARY_MAX_PAYMENT_ATOMIC
+              value: "20000"
+            - name: CANARY_ALLOWED_NETWORKS
+              value: base-sepolia,base
+            - name: CANARY_ALLOW_HTTP
+              value: "false"
+            - name: CANARY_ALLOW_PRIVATE_TARGETS
+              value: "false"
+            - name: LITELLM_BASE_URL
+              value: http://litellm.llm.svc.cluster.local:4000
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-secrets
+                  key: LITELLM_MASTER_KEY
+            - name: REMOTE_SIGNER_URL
+              value: http://remote-signer.hermes-obol-agent.svc.cluster.local:9000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: reports
+              mountPath: /data/reports
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: reports
+          persistentVolumeClaim:
+            claimName: canary402-reports
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: canary402
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: canary402
+spec:
+  selector:
+    app.kubernetes.io/name: canary402
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
