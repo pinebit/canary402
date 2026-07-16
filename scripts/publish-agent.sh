@@ -5,7 +5,7 @@ NAME="canary402"
 NAMESPACE="agent-canary402"
 MODEL="${CANARY_AGENT_MODEL:-openrouter/auto}"
 NETWORK="${CANARY_AGENT_NETWORK:-base}"
-IDENTITY_NETWORK="${CANARY_AGENT_IDENTITY_NETWORK:-base-sepolia}"
+IDENTITY_NETWORK="${CANARY_AGENT_IDENTITY_NETWORK:-base}"
 PRICE="${CANARY_AGENT_PRICE:-0.001}"
 PATH_PREFIX="/services/canary402-agent"
 OBJECTIVE_FILE="agent/objective.md"
@@ -62,9 +62,8 @@ obol sell update "$NAME" -n "$NAMESPACE" \
   --network "$NETWORK" \
   --per-request "$PRICE"
 
-# --description cannot be combined with --no-register in v0.13.0. Keep the
-# public catalog concise. Agent ID 8104 remains on Base Sepolia while buyers
-# pay on Base, so v0.13 offer registration must remain disabled.
+# --description cannot be combined with --no-register in v0.13.0. Patch the
+# concise public catalog entry after the Base AgentIdentity is available.
 AGENT_ID="$(
   obol kubectl -n x402 get agentidentity default \
     -o "jsonpath={.status.registrations[?(@.chain=='$IDENTITY_NETWORK')].agentId}" \

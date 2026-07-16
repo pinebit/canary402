@@ -18,7 +18,7 @@ POST https://andrei-obol-agent.dvlabs.dev/services/canary402-agent/v1/chat/compl
 
 The Agent is a Hermes/OpenRouter service sold for `0.001 USDC` per request on **Base mainnet**. Its deterministic Go audit API remains deployed inside the Obol cluster and is not sold, advertised, or routed publicly. Calling the Agent therefore incurs one Canary402 charge, not a second internal API charge.
 
-Canary402 retains its existing [ERC-8004 Agent ID 8104 on Base Sepolia](https://sepolia.basescan.org/nft/0x8004A818BFB912233c491871b3d84c89A494BD9e/8104). Moving the x402 offer to Base did not mint or replace it. Obol v0.13 cannot publish an offer registration on a chain different from its payment chain, so offer-level ERC-8004 publication is disabled rather than falsely claiming Base token `8104`, which belongs to another wallet. The Agent remains publicly discoverable and payable through x402.
+Canary402 is registered as [ERC-8004 Agent ID 59094 on Base mainnet](https://basescan.org/nft/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432/59094), matching its x402 payment network. The same signer also retains the legacy [Agent ID 8104 on Base Sepolia](https://sepolia.basescan.org/nft/0x8004A818BFB912233c491871b3d84c89A494BD9e/8104). Both registration entries point to the same public Agent and are owned by the Canary402 wallet.
 
 Public discovery documents are available from the shared storefront:
 
@@ -27,7 +27,7 @@ Public discovery documents are available from the shared storefront:
 
 x402scan crawled the permanent origin and registered its single paid resource (`1/1`) after the consolidation to one Base-mainnet offer. The listing command warned only that the generated OpenAPI lacks `info.contact.email`; that field is optional for indexing but enables ownership/contact customization.
 
-The registration document is intentionally `active: false` while the identity and payment chains differ. Obol retains an inactive historical Base entry after deactivation; consumers must not interpret that tombstoned entry as ownership. The linked Base Sepolia registry is the authoritative Canary402 identity.
+The public registration document is active and advertises the Base Agent endpoint. Its Base registration is the primary identity; the Sepolia registration is retained for historical continuity.
 
 The old `/services/canary402` HTTP offer and its public health/report routes have intentionally been removed. Reports are still retained internally, and the Agent returns the report ID and an evidence-based interpretation in its response.
 
@@ -162,7 +162,7 @@ This command:
 1. creates or updates the Hermes Agent from [agent/objective.md](agent/objective.md);
 2. applies the Agent egress and x402 routing resources;
 3. reconciles the x402 price to `0.001 USDC` on Base mainnet;
-4. detects the already-existing Base Sepolia Agent ID but leaves offer registration disabled while payment is on Base, avoiding a false cross-chain identity claim; and
+4. activates the offer against the existing Base Agent ID without minting another identity; and
 5. verifies the local offer.
 
 Forks using another hostname should replace `andrei-obol-agent.dvlabs.dev` in [deploy/public-tunnel-routes.yaml](deploy/public-tunnel-routes.yaml).
@@ -249,7 +249,7 @@ Agent publication:
 |---|---|---|
 | `CANARY_AGENT_MODEL` | `openrouter/auto` | Hermes Agent model |
 | `CANARY_AGENT_NETWORK` | `base` | Inbound x402 payment network |
-| `CANARY_AGENT_IDENTITY_NETWORK` | `base-sepolia` | Existing ERC-8004 identity lookup chain |
+| `CANARY_AGENT_IDENTITY_NETWORK` | `base` | ERC-8004 identity lookup chain; normally match the payment network |
 | `CANARY_AGENT_PRICE` | `0.001` | Per-request USDC price |
 
 LiteLLM authentication comes from the existing `llm/litellm-secrets` Kubernetes secret. Payment signing uses the existing remote signer; its private key is never mounted into Canary402. The signer address is intentionally cached for the process lifetime, so a coordinated signer-key rotation requires restarting Canary402.
@@ -267,6 +267,8 @@ git check-ignore -v .env
 
 Cloudflare terminates TLS before the in-cluster gateway. Obol v0.13.0 otherwise constructs an `http://` challenge resource for an external HTTPS request, so [deploy/public-tunnel-routes.yaml](deploy/public-tunnel-routes.yaml) restores the external scheme and host for the Agent route.
 
-The Agent keeps [Base Sepolia ERC-8004 Agent ID 8104](https://sepolia.basescan.org/nft/0x8004A818BFB912233c491871b3d84c89A494BD9e/8104); its [mint transaction](https://sepolia.basescan.org/tx/0xdf47245cdceda5a7849485cb7ab86f00dec6b681636064fe39e73e7ff1c2c17e) succeeded. Do not rerun on-chain identity registration for this deployment. Obol v0.13 derives the registration chain from the offer payment chain, so the Base-paid offer deliberately has `registration.enabled=false` until cross-chain identity linkage is supported.
+The primary identity is Base Agent ID `59094`. Its [mint transaction](https://basescan.org/tx/0xa23a51b8a6beb357fd798864b2fd1ca0b97a80f7ca2f66b3ef47b25fadb6fcf5) and [agentURI correction](https://basescan.org/tx/0x4727585e079ae2b06f6faa2a96c0aad8c4c17027c1d409d5ed2979f9aebad60f) succeeded. The corrected on-chain URI is `https://andrei-obol-agent.dvlabs.dev/.well-known/agent-registration.json`.
+
+Legacy Base Sepolia Agent ID `8104` remains owned by the same wallet; its [mint transaction](https://sepolia.basescan.org/tx/0xdf47245cdceda5a7849485cb7ab86f00dec6b681636064fe39e73e7ff1c2c17e) also succeeded. Registration is idempotent only while `x402/AgentIdentity` contains the correct per-chain IDs. Do not delete or overwrite that durable record, and always pass the storefront origin—not a service path—to `obol sell register --endpoint`, because v0.13 appends `/.well-known/agent-registration.json` itself.
 
 ERC-8004 identity, an active x402 ServiceOffer, and x402scan discovery are separate states. x402scan previously rejected the shared origin while two Base Sepolia offers were present even though its public checker found both. After consolidation, `obol sell register x402scan` successfully registered the one Base-mainnet Agent resource.

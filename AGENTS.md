@@ -72,7 +72,7 @@ The remote signer owns the wallet key. Canary402 only calls its typed-data signi
 - A direct authenticated Agent run invoked the Canary402 API successfully and returned `PROBE_PASS`, score 100, coverage 40%, report `76b56cd0a830d0779ecb7cdd86259856`.
 - Public `/`, `/openapi.json`, `/.well-known/agent-registration.json`, and the Agent endpoint are the intended public surface. The removed `/services/canary402` API routes must return `404`. `/.well-known/x402` is not exposed on the shared v0.13 storefront and returns `404`.
 - Public unpaid Agent requests at `/services/canary402-agent/v1/chat/completions` return a valid x402 v2 `402` challenge whose metadata advertises Hermes and `openrouter/auto`.
-- The Agent retains ERC-8004 Agent ID `8104` on Base Sepolia while its x402 revenue network is Base mainnet. Obol v0.13 couples offer registration to the payment chain, so `registration.enabled=false` prevents a false claim on Base token 8104. The mint transaction is `0xdf47245cdceda5a7849485cb7ab86f00dec6b681636064fe39e73e7ff1c2c17e`.
+- The primary identity is Base-mainnet ERC-8004 Agent ID `59094`, owned by the signer wallet and matching the x402 revenue network. Mint transaction: `0xa23a51b8a6beb357fd798864b2fd1ca0b97a80f7ca2f66b3ef47b25fadb6fcf5`. The same wallet retains legacy Base Sepolia Agent ID `8104`.
 - A real paid call to the public Agent succeeded for `0.001` Base Sepolia test USDC and produced report `3616014252977a40a71fabcfb460f9c7`; settlement transaction: `0x8dd8842556ea4a4f7a07fbd45d6647cd769370ed326dd921317d93de4026f91b`.
 - A real downstream audit paid another participant's CGT service `0.02` Base mainnet USDC and produced report `b19ad52a37a23132d69ee5d4536fb135`, `PASS`, score/coverage 100; settlement transaction: `0x9eb237c760b8ac34dcebed5a0722c0db155e4a1d04705e3956841a0d3ff1431c`.
 - The operator hard cap is now `20000` atomic USDC (`0.02 USDC`). Every paid downstream audit still requires explicit target, network, and caller cap authorization.
@@ -100,7 +100,7 @@ Important files:
 - `deploy/x402-llm-reference-grant.yaml`: cross-namespace grants required by the Agent's x402 verifier and skill routes.
 - `agent/objective.md`: Hermes Agent objective, tool contract, and downstream-payment safety rules.
 - `scripts/deploy-local.sh`: image build/import and cluster deployment.
-- `scripts/publish-agent.sh`: idempotently creates/updates the Agent, applies egress, reconciles its Base-mainnet `type=agent` offer, detects the existing Base Sepolia identity, and keeps offer registration disabled when the two chains differ.
+- `scripts/publish-agent.sh`: idempotently creates/updates the Agent, applies egress, reconciles its Base-mainnet `type=agent` offer, and activates the existing Base Agent ID without minting.
 - `scripts/smoke-local.sh`: temporary port-forward health test for the internal API.
 - `README.md`: operator and developer instructions.
 
@@ -232,7 +232,7 @@ The permanent tunnel and Agent ServiceOffer are active. Reproduce or verify only
 make sell-agent
 ```
 
-This creates/updates the real Agent, reconciles `0.001 USDC` on Base mainnet, and publishes `/services/canary402-agent/v1/chat/completions`. It looks up the existing Agent ID on Base Sepolia; never change that lookup to the payment network or mint a replacement identity. Because v0.13 derives registration chain from payment chain, the script enables offer registration only when the chains match.
+This creates/updates the real Agent, reconciles `0.001 USDC` on Base mainnet, publishes `/services/canary402-agent/v1/chat/completions`, and activates Base Agent ID `59094`. The safety check enables offer registration only when the identity and payment networks match.
 
 There is deliberately no `make sell` or HTTP publication script. Use a direct port-forward for API development. Do not recreate `llm/canary402` as a ServiceOffer without an explicit product decision.
 
@@ -300,14 +300,16 @@ Preserve these findings for the final hackathon feedback:
 38. Changing an offer's payment network from Base Sepolia to Base while retaining Agent ID 8104 caused v0.13 to publish the same numeric ID against both registries. Base token 8104 belongs to `0x60110b379bb3d8d24F28999553BE26c5c38f91a4`, not Canary402. `RegistrationRequest.spec.chain` is forcibly reconciled from the payment network, and `ServiceOffer.spec.registration` has no independent identity-chain field. Cross-chain identity reuse must either be supported explicitly or rejected; never advertise an unverified token solely by matching its numeric ID.
 39. Disabling registration correctly removed the RegistrationRequest and emptied `services`, but the inactive public registration document retained the false Base token in `registrations`, and `obol sell status` continued to render its explorer link. Tombstoning should remove or explicitly invalidate derived cross-chain records.
 40. Successful x402scan registration warned that generated OpenAPI lacks `info.contact.email`, but the v0.13 publication CLI and ServiceOffer schema expose no obvious way to set storefront OpenAPI contact metadata. The warning should link to a supported configuration path.
+41. `obol sell register --endpoint` describes its value as a service endpoint, but v0.13 appends `/.well-known/agent-registration.json` verbatim. Passing the actual Agent service path minted Base Agent ID 59094 with a payment-gated `agentURI`. Rerunning with the storefront origin safely used the idempotent `setAgentURI` path, but the help should say “origin” and reject endpoints containing a path.
+42. Base registration again completed while the optional `x402` metadata follow-up failed: the initial mint reverted with custom error `0x7e273289`, and the URI-correction rerun hit `nonce too low`. The CLI correctly retained success, but should sequence/refresh nonces and report metadata as optional without making the operator question the NFT mint.
 
 ## Registration state
 
-- Base Sepolia ERC-8004 Agent ID: `8104`.
-- Registry: `0x8004A818BFB912233c491871b3d84c89A494BD9e`.
-- Mint transaction: `0xdf47245cdceda5a7849485cb7ab86f00dec6b681636064fe39e73e7ff1c2c17e`.
-- The Base-paid Agent ServiceOffer deliberately has registration disabled because its existing identity is on Base Sepolia. It must not report Base token 8104 as Canary402's identity.
-- `obol sell register` is an on-chain identity operation, separate from having Ready x402 offers. Do not rerun it: that could mint a duplicate identity.
+- Base-mainnet ERC-8004 Agent ID: `59094`; registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`; mint transaction `0xa23a51b8a6beb357fd798864b2fd1ca0b97a80f7ca2f66b3ef47b25fadb6fcf5`.
+- Its agentURI correction transaction is `0x4727585e079ae2b06f6faa2a96c0aad8c4c17027c1d409d5ed2979f9aebad60f`; the URI resolves to the public root registration document.
+- Legacy Base Sepolia Agent ID: `8104`; registry `0x8004A818BFB912233c491871b3d84c89A494BD9e`; mint transaction `0xdf47245cdceda5a7849485cb7ab86f00dec6b681636064fe39e73e7ff1c2c17e`.
+- The Base-paid Agent ServiceOffer should report `Registered=True` with Agent ID `59094`.
+- `obol sell register` is idempotent when the per-chain AgentIdentity status is correct. Never remove or overwrite those IDs; pass the storefront origin to `--endpoint` so a rerun updates URI rather than minting.
 - The signing/payout wallet address is public, but its private key remains exclusively in the Obol remote signer. Never try to export it.
 - x402scan is a separate external listing. The old two-offer Base Sepolia attempt failed; the one-Agent Base-mainnet attempt succeeded with `1/1` resources.
 

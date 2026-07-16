@@ -157,7 +157,7 @@ The current MVP includes:
 - Remote-signer integration, SSRF controls, bounded response capture, and OpenRouter semantic evaluation.
 - Internally retained evidence reports that contain response digests rather than purchased response bodies.
 - One public Hermes/OpenRouter Agent sold for `0.001` Base mainnet USDC, backed by an internal deterministic HTTP API that is neither sold nor publicly routed.
-- A permanent deployment at [andrei-obol-agent.dvlabs.dev](https://andrei-obol-agent.dvlabs.dev) using ERC-8004 Agent ID 8104.
+- A permanent deployment at [andrei-obol-agent.dvlabs.dev](https://andrei-obol-agent.dvlabs.dev) using Base-mainnet ERC-8004 Agent ID 59094, with legacy Base Sepolia ID 8104 retained.
 - Successful paid settlement tests on Base Sepolia and Base mainnet.
 
 Comparison audits, recurring monitoring, badges, and the leaderboard remain future work.
