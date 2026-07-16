@@ -292,7 +292,7 @@ For six-decimal USDC, `1000` atomic units is `0.001 USDC`. A paid audit spends r
 The public service fails closed:
 
 - Only public HTTPS targets on port 443 are accepted.
-- Loopback, private, link-local, metadata, benchmark, documentation, and carrier-grade NAT ranges are blocked.
+- Loopback, private, link-local, metadata, benchmark, documentation, and carrier-grade NAT ranges are blocked, including IPv4-mapped IPv6 literals and the standard NAT64 translation prefixes.
 - DNS is resolved and checked again at connection time to reduce DNS-rebinding risk.
 - Redirects are never followed, especially after attaching a payment authorization.
 - Request bodies are limited to 64 KiB and must be JSON.
@@ -330,19 +330,30 @@ make status
 make logs
 ```
 
-The unit suite includes a complete simulated flow: specification discovery, path-template matching, deterministic repair generation, challenge comparison, cap enforcement, remote-signature request, x402 envelope, paid retry, settlement evidence, semantic evaluation, and persisted reports. Generative and fuzz tests enforce deterministic, bounded parsing and the invariant that inferred schemas contain no example values. The live deployment has also completed real Base Sepolia and Base mainnet settlements, linked above.
+The unit suite includes a complete simulated flow: specification discovery, path-template matching, deterministic repair generation, challenge comparison, cap enforcement, remote-signature request, x402 envelope, paid retry, settlement evidence, semantic evaluation, and persisted reports. Generative and fuzz tests enforce deterministic, bounded parsing, equivalent IPv4/mapped-IPv6 safety classification, and the invariant that inferred schemas contain no example values. The live deployment has also completed real Base Sepolia and Base mainnet settlements, linked above.
 
-## Configuration
+## Runtime configuration
 
 | Variable | Default | Meaning |
 |---|---|---|
+| `PORT` | `8080` | Canary402 HTTP listen port |
+| `CANARY_REPORT_DIR` | `/data/reports` | Persistent report directory |
 | `CANARY_MAX_PAYMENT_ATOMIC` | `20000` | Absolute per-audit downstream spend cap |
 | `CANARY_ALLOWED_NETWORKS` | `base-sepolia,base` | Allowed payment networks |
-| `CANARY_MODEL` | `openrouter/auto` | LiteLLM model used for semantic judgment |
 | `CANARY_MAX_CONCURRENT` | `4` | Concurrent audit limit |
 | `CANARY_TARGET_TIMEOUT_SECONDS` | `20` | Per-target request timeout |
 | `CANARY_ALLOW_HTTP` | `false` | Development-only HTTP target support |
 | `CANARY_ALLOW_PRIVATE_TARGETS` | `false` | Test-only private target support; never enable publicly |
+| `LITELLM_BASE_URL` | in-cluster LiteLLM | OpenAI-compatible semantic-evaluator URL |
+| `LITELLM_MASTER_KEY` | empty | LiteLLM bearer token; when absent, semantic evaluation is disabled |
+| `CANARY_MODEL` | `openrouter/auto` | LiteLLM model used for semantic judgment |
+| `REMOTE_SIGNER_URL` | in-cluster remote signer | Obol typed-data signer URL |
+| `REMOTE_SIGNER_TOKEN` | empty | Optional remote-signer bearer token |
+
+## Publishing configuration
+
+| Variable | Default | Meaning |
+|---|---|---|
 | `CANARY_HOSTNAME` | empty | Permanent shared hostname passed to `make sell` |
 | `CANARY_SELL_NETWORK` | `base-sepolia` | Inbound sale network used when creating the offer |
 | `CANARY_SELL_PRICE` | `0.001` | Inbound per-request USDC price used when creating the offer |
@@ -350,7 +361,9 @@ The unit suite includes a complete simulated flow: specification discovery, path
 | `CANARY_AGENT_NETWORK` | `base-sepolia` | Agent offer's inbound payment network |
 | `CANARY_AGENT_PRICE` | `0.001` | Agent offer's per-request USDC price |
 
-LiteLLM authentication comes from the existing `llm/litellm-secrets` Kubernetes secret. Payment signing uses the existing remote signer service; private keys are never mounted into Canary402.
+LiteLLM authentication comes from the existing `llm/litellm-secrets` Kubernetes secret. If that token is absent, Canary402 remains available for deterministic audits and reports `semantic_evaluation: false` from `/health`; expectations then produce a warning instead of an invented judgment. A semantic result marked passed with a score below 50 is likewise downgraded to a warning rather than producing a clean PASS.
+
+Payment signing uses the existing remote signer service; private keys are never mounted into Canary402. The signer address is intentionally pinned for the process lifetime because it is the funded, registered agent identity. After a coordinated remote-signer key rotation, restart Canary402 so it loads the new address.
 
 ## Secrets and source control
 
@@ -372,7 +385,8 @@ Verified on 16 July 2026:
 - Landing page, storefront OpenAPI discovery, and the Agent registration document return `200` publicly.
 - Free `/services/canary402/health` and `/services/canary402/reports/{id}` routes return `200` publicly.
 - Unpaid requests to both paid endpoints return x402 v2 `402` challenges.
-- The deployed service reports `semantic_evaluation: true`, `spec_review: true`, and `repair_generation: true`; `openrouter/auto` has answered a live evaluation request.
+- The deployed `0.2.1-dev` service reports `semantic_evaluation: true`, `spec_review: true`, and `repair_generation: true`; `openrouter/auto` has answered a live evaluation request.
+- The live API rejects an IPv4-mapped CGNAT target with HTTP 400 before connecting or authorizing payment; mapped-address equivalence and standard NAT64 blocks are covered by regression and fuzz tests.
 - A live SpecSmith review returned `PROBE_PASS`, score 100, and `spec_review.status: READY` after matching the public Agent's OpenAPI operation, ERC-8004 registration, skill document, x402 resource, and Bazaar schemas. It generated deterministic repair proposals with `payment.attempted: false`; see [report 433d427e0fba2283a5166af695b7dea7](https://andrei-obol-agent.dvlabs.dev/services/canary402/reports/433d427e0fba2283a5166af695b7dea7).
 - A public probe report is available at [report 436e24422caa55b08f50b049a41c15fe](https://andrei-obol-agent.dvlabs.dev/services/canary402/reports/436e24422caa55b08f50b049a41c15fe).
 - Real inbound and downstream paid settlements have succeeded, as documented in [Live paid verification](#live-paid-verification).

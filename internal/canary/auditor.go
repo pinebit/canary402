@@ -299,12 +299,29 @@ func (a *Auditor) evaluateOutcome(ctx context.Context, report *AuditReport, requ
 		return
 	}
 	report.Semantic = result
-	points := result.Score * 25 / 100
-	statusLabel := checkFailed
-	if result.Passed {
-		statusLabel = checkPassed
+	report.Checks = append(report.Checks, semanticOutcomeCheck(result))
+}
+
+const semanticPassScoreFloor = 50
+
+func semanticOutcomeCheck(result SemanticResult) Check {
+	check := Check{
+		Name:     "task_outcome",
+		Status:   checkFailed,
+		Weight:   25,
+		Points:   result.Score * 25 / 100,
+		Evidence: result.Reason,
 	}
-	report.Checks = append(report.Checks, Check{Name: "task_outcome", Status: statusLabel, Weight: 25, Points: points, Evidence: result.Reason})
+	if !result.Passed {
+		return check
+	}
+	if result.Score < semanticPassScoreFloor {
+		check.Status = checkWarning
+		check.Evidence = fmt.Sprintf("Evaluator marked the outcome as passed but assigned only %d/100: %s", result.Score, result.Reason)
+		return check
+	}
+	check.Status = checkPassed
+	return check
 }
 
 func (a *Auditor) persist(report AuditReport) (AuditReport, error) {

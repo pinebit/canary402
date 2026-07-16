@@ -242,6 +242,9 @@ type RemoteSigner struct {
 	token   string
 	client  *http.Client
 	mu      sync.Mutex
+	// address is deliberately pinned for the process lifetime. The funded
+	// agent wallet is part of Canary402's identity; coordinated signer-key
+	// rotation therefore requires restarting this workload.
 	address string
 }
 

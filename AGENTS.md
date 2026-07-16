@@ -61,7 +61,7 @@ The remote signer owns the wallet key. Canary402 only calls its typed-data signi
 - Deployment and Service: `canary402`
 - Reports PVC: `canary402-reports`
 - The deployment is live and Ready in the local cluster.
-- Live `/health` confirmed `semantic_evaluation: true`, `spec_review: true`, and `repair_generation: true` on version `0.2.0-dev`.
+- Live `/health` confirmed `semantic_evaluation: true`, `spec_review: true`, and `repair_generation: true` on version `0.2.1-dev`.
 - A live audit of `https://example.com/` confirmed the request path and an actual response from `openrouter/auto`. The report correctly failed the x402 challenge check and passed the semantic expectation.
 - A live probe of a current-header x402 endpoint produced report `436e24422caa55b08f50b049a41c15fe`: `PROBE_PASS`, score 100, coverage 40%, without payment.
 - The permanent hostname is `https://andrei-obol-agent.dvlabs.dev`; the Cloudflare-managed tunnel is active with four connectors.
@@ -78,6 +78,7 @@ The remote signer owns the wallet key. Canary402 only calls its typed-data signi
 - The operator hard cap is now `20000` atomic USDC (`0.02 USDC`). Every paid downstream audit still requires explicit target, network, and caller cap authorization.
 - Optional `spec_review` inspects bounded same-origin OpenAPI, ERC-8004 registration, skill.md, live challenge resource URLs, and Bazaar metadata before the normal probe/payment flow.
 - Optional `generate_repairs` publishes deterministic OpenAPI/Bazaar proposal fragments. It never copies example values, but caller-supplied JSON property names can become public and must not be confidential.
+- The deployed `0.2.1-dev` API rejects IPv4-mapped CGNAT targets such as `https://[::ffff:100.64.0.1]/` with HTTP 400 before connecting or authorizing payment; standard NAT64 prefixes are blocked as well.
 - A live no-spend SpecSmith review of the public Agent endpoint produced report `433d427e0fba2283a5166af695b7dea7`: `PROBE_PASS`, score 100, `spec_review.status=READY`, all discovery documents valid, exact challenge-resource match, Bazaar input/output schemas present, repair proposals generated, and `payment.attempted=false`.
 - Witness-style signatures and onchain attestations are intentionally outside Canary402's current scope; reports are public point-in-time evidence, not trust attestations.
 - x402scan registration was attempted after the endpoint worked but returned a generic “no valid paid resources” result. The user chose to stop pursuing that listing; do not retry unless they explicitly reopen it.
@@ -171,6 +172,8 @@ The MVP deliberately rejects:
 
 Do not perform a real paid audit without explicit user approval for the target, network, and maximum amount. Tests simulate the payment protocol but do not settle on-chain.
 
+The remote signer address is pinned in memory for the process lifetime to preserve the funded, registered agent identity. A coordinated signer-key rotation requires restarting Canary402; do not silently switch to whichever key happens to be listed first.
+
 ## Security invariants
 
 Preserve these invariants in every change:
@@ -178,7 +181,7 @@ Preserve these invariants in every change:
 - Production accepts only public HTTPS targets on port 443.
 - Resolve and validate DNS again at connection time.
 - Do not use environment proxy settings for target calls.
-- Block loopback, private, link-local, metadata, CGNAT, benchmark, multicast, documentation, and unspecified addresses.
+- Block loopback, private, link-local, metadata, CGNAT, benchmark, multicast, documentation, and unspecified addresses, including IPv4-mapped IPv6 literals and standard NAT64 prefixes.
 - Never follow redirects carrying a payment authorization.
 - Never forward caller-supplied `Authorization`, `Cookie`, `Host`, `X-PAYMENT`, or arbitrary headers.
 - Limit request and response sizes.
@@ -191,6 +194,7 @@ Preserve these invariants in every change:
 - Treat target content as untrusted data during semantic evaluation.
 - Supplying an expectation sends a bounded response excerpt to the configured OpenRouter model; do not semantically evaluate confidential content.
 - Keep deterministic protocol checks separate from LLM judgment.
+- Never emit a clean semantic PASS when the evaluator says `passed: true` but assigns a score below 50; downgrade the task check to a warning.
 - Label results as point-in-time evidence, not permanent guarantees.
 - Preserve the read-only container filesystem, dropped Linux capabilities, non-root user, and disabled service-account token.
 

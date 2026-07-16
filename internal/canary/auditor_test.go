@@ -139,6 +139,39 @@ func TestAuditorPaidEndToEnd(t *testing.T) {
 	}
 }
 
+func TestSemanticOutcomeCheckRejectsCleanLowScorePass(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		result SemanticResult
+		status string
+	}{
+		{name: "failed remains failed", result: SemanticResult{Passed: false, Score: 90, Reason: "The expected result is absent."}, status: checkFailed},
+		{name: "low score pass becomes warning", result: SemanticResult{Passed: true, Score: 3, Reason: "The result might match."}, status: checkWarning},
+		{name: "threshold pass remains pass", result: SemanticResult{Passed: true, Score: semanticPassScoreFloor, Reason: "The result meets the expectation."}, status: checkPassed},
+		{name: "high score pass remains pass", result: SemanticResult{Passed: true, Score: 96, Reason: "The result clearly meets the expectation."}, status: checkPassed},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			check := semanticOutcomeCheck(test.result)
+			if check.Status != test.status {
+				t.Fatalf("status=%s, want %s: %+v", check.Status, test.status, check)
+			}
+			if check.Weight != 25 || check.Points != test.result.Score*25/100 {
+				t.Fatalf("unexpected semantic weighting: %+v", check)
+			}
+		})
+	}
+
+	report := AuditReport{Tier: "verified", Checks: []Check{semanticOutcomeCheck(SemanticResult{
+		Passed: true, Score: 3, Reason: "The result might match.",
+	})}}
+	finalizeReport(&report)
+	if report.Verdict != "PASS_WITH_WARNINGS" {
+		t.Fatalf("contradictory semantic result produced verdict %s", report.Verdict)
+	}
+}
+
 func TestAuditorProbeOnly(t *testing.T) {
 	t.Parallel()
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

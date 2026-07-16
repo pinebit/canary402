@@ -101,6 +101,7 @@ func (s *SafeHTTPClient) ValidateURL(ctx context.Context, rawURL string) (*url.U
 
 func resolveAndValidate(ctx context.Context, resolver *net.Resolver, host string, allowPrivate bool) ([]netip.Addr, error) {
 	if ip, err := netip.ParseAddr(strings.Trim(host, "[]")); err == nil {
+		ip = ip.Unmap()
 		if !allowPrivate && !isSafePublicIP(ip) {
 			return nil, fmt.Errorf("target resolves to a prohibited address")
 		}
@@ -113,15 +114,22 @@ func resolveAndValidate(ctx context.Context, resolver *net.Resolver, host string
 	if len(addresses) == 0 {
 		return nil, fmt.Errorf("target hostname has no addresses")
 	}
+	normalized := make([]netip.Addr, 0, len(addresses))
 	for _, ip := range addresses {
+		ip = ip.Unmap()
 		if !allowPrivate && !isSafePublicIP(ip) {
 			return nil, fmt.Errorf("target hostname resolves to a prohibited address")
 		}
+		normalized = append(normalized, ip)
 	}
-	return addresses, nil
+	return normalized, nil
 }
 
 func isSafePublicIP(ip netip.Addr) bool {
+	// Normalize IPv4-mapped IPv6 before both the built-in predicates and the
+	// IPv4 prefix blocklist. Prefix.Contains intentionally treats the two
+	// address families as distinct.
+	ip = ip.Unmap()
 	if !ip.IsValid() || !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
 		return false
 	}
@@ -133,6 +141,10 @@ func isSafePublicIP(ip netip.Addr) bool {
 		netip.MustParsePrefix("198.18.0.0/15"),
 		netip.MustParsePrefix("198.51.100.0/24"),
 		netip.MustParsePrefix("203.0.113.0/24"),
+		// Well-known and local-use NAT64 translation prefixes can otherwise
+		// expose prohibited IPv4 destinations through an IPv6 literal.
+		netip.MustParsePrefix("64:ff9b::/96"),
+		netip.MustParsePrefix("64:ff9b:1::/48"),
 		netip.MustParsePrefix("2001:db8::/32"),
 	}
 	for _, prefix := range prohibited {
@@ -144,12 +156,12 @@ func isSafePublicIP(ip netip.Addr) bool {
 }
 
 func redactedURL(parsed *url.URL) string {
-	copy := *parsed
-	copy.RawQuery = ""
-	copy.ForceQuery = false
-	copy.Fragment = ""
-	copy.User = nil
-	return copy.String()
+	sanitized := *parsed
+	sanitized.RawQuery = ""
+	sanitized.ForceQuery = false
+	sanitized.Fragment = ""
+	sanitized.User = nil
+	return sanitized.String()
 }
 
 func isASCII(value string) bool {
