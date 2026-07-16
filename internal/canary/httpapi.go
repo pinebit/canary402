@@ -58,7 +58,7 @@ func (h *apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *apiHandler) landing(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Canary402</title><style>body{font:17px/1.5 system-ui;max-width:760px;margin:10vh auto;padding:0 24px;color:#17202a}code{background:#f3f4f6;padding:.15em .35em;border-radius:4px}h1{font-size:3rem;margin-bottom:0}.tag{color:#556}</style></head><body><h1>Canary402</h1><p class="tag">The mystery shopper for paid agents.</p><p>Submit an x402 endpoint to <code>POST /audit</code>. Canary402 validates its payment challenge, optionally makes one strictly budgeted payment, and publishes an evidence-backed report.</p><p><a href="/openapi.json">OpenAPI</a> · <a href="/health">Health</a></p></body></html>`
+	const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Canary402</title><style>body{font:17px/1.5 system-ui;max-width:760px;margin:10vh auto;padding:0 24px;color:#17202a}code{background:#f3f4f6;padding:.15em .35em;border-radius:4px}h1{font-size:3rem;margin-bottom:0}.tag{color:#556}</style></head><body><h1>Canary402</h1><p class="tag">Service-contract inspector and mystery shopper for paid agents.</p><p>Submit an x402 endpoint to <code>POST /audit</code>. Canary402 can inspect its public specification, generate safe repair templates, validate the payment challenge, optionally make one strictly budgeted payment, and publish an evidence-backed report.</p><p><a href="/openapi.json">OpenAPI</a> · <a href="/health">Health</a></p></body></html>`
 	io.WriteString(w, page)
 }
 
@@ -66,6 +66,8 @@ func (h *apiHandler) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "ok", "service": "canary402", "version": h.version,
 		"semantic_evaluation": h.auditor.evaluator != nil,
+		"spec_review":         true,
+		"repair_generation":   true,
 	})
 }
 
@@ -125,7 +127,7 @@ func (h *apiHandler) openapi(w http.ResponseWriter, _ *http.Request) {
 		"openapi": "3.1.0",
 		"info": map[string]any{
 			"title": "Canary402", "version": h.version,
-			"description": "A budget-capped, end-to-end mystery shopper for x402 services.",
+			"description": "A specification inspector, repair generator, and budget-capped end-to-end mystery shopper for x402 services.",
 		},
 		"paths": map[string]any{
 			"/audit": map[string]any{"post": map[string]any{
@@ -145,6 +147,8 @@ func (h *apiHandler) openapi(w http.ResponseWriter, _ *http.Request) {
 				"content_type":       map[string]any{"type": "string", "enum": []string{"application/json"}},
 				"expectation":        map[string]any{"type": "string", "maxLength": 2000},
 				"expected_status":    map[string]any{"type": "integer", "minimum": 100, "maximum": 599},
+				"spec_review":        map[string]any{"type": "boolean", "default": false, "description": "Inspect public OpenAPI, ERC-8004 registration, skill.md, and live x402 metadata without authorizing downstream spend."},
+				"generate_repairs":   map[string]any{"type": "boolean", "default": false, "description": "With spec_review, publish proposed value-free OpenAPI and Bazaar repair templates. Caller-supplied property names may appear in the public report."},
 				"pay":                map[string]any{"type": "boolean", "default": false},
 				"max_payment_atomic": map[string]any{"type": "string", "pattern": "^[0-9]+$"},
 				"payment_network":    map[string]any{"type": "string", "examples": []string{"base-sepolia", "base"}},

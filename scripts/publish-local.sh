@@ -30,7 +30,7 @@ else
     --token USDC \
     --price "$PRICE" \
     --no-register \
-    --route "path=/audit,methods=POST,gate=paid,price=$PRICE,summary=Run an x402 endpoint audit" \
+    --route "path=/audit,methods=POST,gate=paid,price=$PRICE,summary=Inspect and audit an x402 service" \
     --route "path=/reports/*,methods=GET,gate=free,summary=Read a public audit report" \
     --route "path=/health,methods=GET,gate=free,summary=Check Canary402 health" \
     --rps 2
@@ -64,7 +64,7 @@ AGENT_ID="$(
 )"
 if [ -n "$AGENT_ID" ]; then
   obol kubectl -n "$NAMESPACE" patch serviceoffer "$NAME" --type=merge \
-    -p='{"spec":{"registration":{"enabled":true,"name":"Canary402","description":"Deterministic evidence-backed reliability audits for x402-paid HTTP services.","metadata":{"pricingUnit":"audit","x402Asset":"USDC","x402Network":"base-sepolia","x402Price":"0.001"}}}}'
+    -p='{"spec":{"registration":{"enabled":true,"name":"Canary402","description":"Specification inspection, repair generation, and evidence-backed reliability audits for x402-paid HTTP services.","metadata":{"pricingUnit":"audit","x402Asset":"USDC","x402Network":"base-sepolia","x402Price":"0.001"}}}}'
 else
   echo "No $NETWORK AgentIdentity exists; ERC-8004 registration remains disabled."
 fi

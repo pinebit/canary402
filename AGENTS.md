@@ -4,11 +4,11 @@ This file is the operational context for coding agents working in the Canary402 
 
 ## Goal
 
-Build and publish **Canary402**, the mystery shopper for paid agents:
+Build and publish **Canary402**, the service-contract inspector and mystery shopper for paid agents:
 
-> Before your agent pays a new service, Canary402 pays it once and tells you whether it actually worked.
+> Before your agent integrates with or pays a service, Canary402 checks the contract and verifies the delivery.
 
-The concept and product rationale are in `idea.md`. The current implementation is a deterministic Go audit API with a narrowly scoped LLM evaluator. It is intentionally not a free-form chat wrapper.
+The concept and product rationale are in `idea.md`. The current implementation is a deterministic Go specification/audit API with a narrowly scoped LLM evaluator. It is intentionally not a free-form chat wrapper.
 
 ## Repository state
 
@@ -61,7 +61,7 @@ The remote signer owns the wallet key. Canary402 only calls its typed-data signi
 - Deployment and Service: `canary402`
 - Reports PVC: `canary402-reports`
 - The deployment is live and Ready in the local cluster.
-- Live `/health` confirmed `semantic_evaluation: true`.
+- Live `/health` confirmed `semantic_evaluation: true`, `spec_review: true`, and `repair_generation: true` on version `0.2.0-dev`.
 - A live audit of `https://example.com/` confirmed the request path and an actual response from `openrouter/auto`. The report correctly failed the x402 challenge check and passed the semantic expectation.
 - A live probe of a current-header x402 endpoint produced report `436e24422caa55b08f50b049a41c15fe`: `PROBE_PASS`, score 100, coverage 40%, without payment.
 - The permanent hostname is `https://andrei-obol-agent.dvlabs.dev`; the Cloudflare-managed tunnel is active with four connectors.
@@ -76,6 +76,10 @@ The remote signer owns the wallet key. Canary402 only calls its typed-data signi
 - A real paid call to the public Agent succeeded for `0.001` Base Sepolia test USDC and produced report `3616014252977a40a71fabcfb460f9c7`; settlement transaction: `0x8dd8842556ea4a4f7a07fbd45d6647cd769370ed326dd921317d93de4026f91b`.
 - A real downstream audit paid another participant's CGT service `0.02` Base mainnet USDC and produced report `b19ad52a37a23132d69ee5d4536fb135`, `PASS`, score/coverage 100; settlement transaction: `0x9eb237c760b8ac34dcebed5a0722c0db155e4a1d04705e3956841a0d3ff1431c`.
 - The operator hard cap is now `20000` atomic USDC (`0.02 USDC`). Every paid downstream audit still requires explicit target, network, and caller cap authorization.
+- Optional `spec_review` inspects bounded same-origin OpenAPI, ERC-8004 registration, skill.md, live challenge resource URLs, and Bazaar metadata before the normal probe/payment flow.
+- Optional `generate_repairs` publishes deterministic OpenAPI/Bazaar proposal fragments. It never copies example values, but caller-supplied JSON property names can become public and must not be confidential.
+- A live no-spend SpecSmith review of the public Agent endpoint produced report `433d427e0fba2283a5166af695b7dea7`: `PROBE_PASS`, score 100, `spec_review.status=READY`, all discovery documents valid, exact challenge-resource match, Bazaar input/output schemas present, repair proposals generated, and `payment.attempted=false`.
+- Witness-style signatures and onchain attestations are intentionally outside Canary402's current scope; reports are public point-in-time evidence, not trust attestations.
 - x402scan registration was attempted after the endpoint worked but returned a generic “no valid paid resources” result. The user chose to stop pursuing that listing; do not retry unless they explicitly reopen it.
 
 ## Architecture
@@ -86,6 +90,7 @@ Important files:
 - `internal/canary/auditor.go`: audit state machine and score calculation.
 - `internal/canary/safeclient.go`: URL validation, SSRF controls, DNS validation, and no-redirect HTTP transport.
 - `internal/canary/payment.go`: x402 v2 parsing, payment selection, EIP-3009 typed data, remote-signer calls, and payment envelope encoding.
+- `internal/canary/specsmith.go`: bounded discovery fetching, OpenAPI/registration/Bazaar analysis, path matching, shape-only schema inference, and deterministic repair templates.
 - `internal/canary/semantic.go`: LiteLLM/OpenRouter outcome evaluation with untrusted-response boundaries.
 - `internal/canary/store.go`: atomic JSON report persistence.
 - `internal/canary/httpapi.go`: HTTP API and local OpenAPI document.
@@ -103,14 +108,16 @@ Runtime flow:
 
 1. Caller pays the Obol-gated public `POST /services/canary402/audit` route, or calls upstream `POST /audit` directly during local development.
 2. Canary402 validates the requested target before connecting.
-3. It sends an unpaid request and expects an x402 v2 challenge in the current header format or Obol's JSON-body compatibility format.
-4. If `pay` is false, it publishes a probe-only report.
-5. If `pay` is true, it requires `max_payment_atomic`, checks the request cap and hard operator cap, and requires one unambiguous supported payment option.
-6. It asks the existing Obol remote signer for one EIP-712 signature.
-7. It retries the exact request with `PAYMENT-SIGNATURE` or compatibility `X-PAYMENT`, matching the target's challenge transport, and refuses redirects.
-8. It records response and settlement evidence.
-9. It asks `openrouter/auto` through LiteLLM to judge only the user-supplied expectation against the untrusted response.
-10. It persists a public report and returns its ID.
+3. With `spec_review`, it fetches only `/openapi.json`, `/.well-known/agent-registration.json`, and `/skill.md` on the validated target origin, with redirect and size limits.
+4. It sends an unpaid request and expects an x402 v2 challenge in the current header format or Obol's JSON-body compatibility format.
+5. The specification stage compares the requested operation with the documents, challenge resource, and Bazaar metadata; optional repair artifacts contain shapes/TODOs but no example values.
+6. If `pay` is false, it publishes a probe-only report, using `PROBE_PASS_WITH_WARNINGS` when the service contract needs repair.
+7. If `pay` is true, it requires `max_payment_atomic`, checks the request cap and hard operator cap, and requires one unambiguous supported payment option.
+8. It asks the existing Obol remote signer for one EIP-712 signature.
+9. It retries the exact request with `PAYMENT-SIGNATURE` or compatibility `X-PAYMENT`, matching the target's challenge transport, and refuses redirects.
+10. It records response and settlement evidence.
+11. It asks `openrouter/auto` through LiteLLM to judge only the user-supplied expectation against the untrusted response.
+12. It persists a public report and returns its ID.
 
 Agent wrapper flow:
 
@@ -128,6 +135,11 @@ The Agent and raw API are separate paid products. A user pays only the offer the
 - `GET /reports/{id}`: free public report.
 - `GET /health`: free health endpoint.
 - `GET /openapi.json`: direct local API description; the public shared origin exposes Obol's storefront description and discovery bundle.
+
+`POST /audit` accepts the existing payment/delivery fields plus:
+
+- `spec_review`: opt in to specification/discovery analysis.
+- `generate_repairs`: with `spec_review`, publish proposed OpenAPI/Bazaar repair fragments. This is explicit consent to publish caller-supplied JSON property names, though never their values.
 
 The caller's inbound payment and Canary402's downstream payment are separate. A paid call to Canary402 does not authorize a downstream purchase unless the JSON request explicitly sets `pay: true` and supplies a cap.
 
@@ -172,6 +184,10 @@ Preserve these invariants in every change:
 - Limit request and response sizes.
 - Strip query strings and credentials from public reports.
 - Do not persist or publish target response bodies. Store only captured byte count and SHA-256 digest.
+- Specification discovery must remain limited to the three fixed same-origin paths, 256 KiB per document, a five-second per-document context, SSRF revalidation, and no redirects or external `$ref` fetching.
+- Never persist fetched specification/registration/skill bodies. Store only bounded derived flags/findings, metadata, and digests.
+- Inferred schemas must never retain example values, defaults, constants, or enum values. Property names may be persisted only after `generate_repairs` explicitly opts in.
+- Label generated repair fragments as proposals with review-required TODOs. Never infer authoritative requiredness or business semantics.
 - Treat target content as untrusted data during semantic evaluation.
 - Supplying an expectation sends a bounded response excerpt to the configured OpenRouter model; do not semantically evaluate confidential content.
 - Keep deterministic protocol checks separate from LLM judgment.
@@ -299,4 +315,5 @@ Preserve these findings for the final hackathon feedback:
 2. Collect feedback from other hackathon participants using the public URL.
 3. Require explicit target, network, and atomic cap approval before every new real downstream payment.
 4. Add Permit2, async job support, response-schema hints, or private buyer-side result capture only after the basic paid flow remains stable.
-5. Leave x402scan alone unless the user explicitly reopens that work.
+5. Extend specification support to YAML or external references only with the same SSRF, size, depth, and privacy invariants.
+6. Leave x402scan alone unless the user explicitly reopens that work.

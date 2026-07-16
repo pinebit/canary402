@@ -23,9 +23,10 @@ var addressPattern = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
 var signaturePattern = regexp.MustCompile(`^0x[0-9a-fA-F]{130}$`)
 
 type PaymentChallenge struct {
-	Version    int
-	Accepts    []PaymentRequirement
-	Extensions map[string]any
+	Version     int
+	ResourceURL string
+	Accepts     []PaymentRequirement
+	Extensions  map[string]any
 }
 
 type PaymentRequirement struct {
@@ -53,6 +54,7 @@ func (p PaymentRequirement) Summary() PaymentOptionSummary {
 func ParsePaymentChallenge(body []byte) (PaymentChallenge, error) {
 	var raw struct {
 		X402Version int              `json:"x402Version"`
+		Resource    any              `json:"resource"`
 		Accepts     []map[string]any `json:"accepts"`
 		Extensions  map[string]any   `json:"extensions"`
 	}
@@ -68,7 +70,7 @@ func ParsePaymentChallenge(body []byte) (PaymentChallenge, error) {
 		return PaymentChallenge{}, fmt.Errorf("402 response has no payment options")
 	}
 
-	challenge := PaymentChallenge{Version: raw.X402Version, Extensions: raw.Extensions}
+	challenge := PaymentChallenge{Version: raw.X402Version, ResourceURL: paymentResourceURL(raw.Resource), Extensions: raw.Extensions}
 	for index, item := range raw.Accepts {
 		amount, err := atomicString(item["amount"])
 		if err != nil {
@@ -97,6 +99,17 @@ func ParsePaymentChallenge(body []byte) (PaymentChallenge, error) {
 		})
 	}
 	return challenge, nil
+}
+
+func paymentResourceURL(raw any) string {
+	switch typed := raw.(type) {
+	case string:
+		return truncateText(typed, 2_048)
+	case map[string]any:
+		return truncateText(stringValue(typed["url"]), 2_048)
+	default:
+		return ""
+	}
 }
 
 func ParsePaymentChallengeResponse(headers http.Header, body []byte) (PaymentChallenge, string, string, error) {

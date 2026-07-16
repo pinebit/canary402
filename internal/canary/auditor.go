@@ -56,6 +56,10 @@ func (a *Auditor) Audit(ctx context.Context, request AuditRequest) (AuditReport,
 		Tier:      "probe",
 		Payment:   PaymentResult{Requested: request.Pay},
 	}
+	var specInspection *specInspection
+	if request.SpecReview {
+		specInspection = a.inspectSpecifications(ctx, parsedURL, method, request.Body, request.GenerateRepairs)
+	}
 
 	probeResponse, probeBody, latency, truncated, err := a.send(ctx, parsedURL, method, request, "", "")
 	if err != nil {
@@ -66,8 +70,7 @@ func (a *Auditor) Audit(ctx context.Context, request AuditRequest) (AuditReport,
 			Check{Name: "paid_delivery", Status: checkSkipped, Weight: 25, Evidence: "Payment was not attempted."},
 			Check{Name: "task_outcome", Status: checkSkipped, Weight: 25, Evidence: "No response was available to evaluate."},
 		)
-		finalizeReport(&report)
-		return a.persist(report)
+		return a.complete(&report, specInspection, parsedURL, nil)
 	}
 	defer probeResponse.Body.Close()
 	report.Probe = ProbeResult{
@@ -90,8 +93,7 @@ func (a *Auditor) Audit(ctx context.Context, request AuditRequest) (AuditReport,
 			Check{Name: "paid_delivery", Status: checkSkipped, Weight: 25, Evidence: "Payment was not attempted."},
 		)
 		a.evaluateOutcome(ctx, &report, request, probeResponse.StatusCode, report.Probe.ContentType, probeBody)
-		finalizeReport(&report)
-		return a.persist(report)
+		return a.complete(&report, specInspection, parsedURL, nil)
 	}
 
 	challenge, challengeTransport, authorizationHeader, err := ParsePaymentChallengeResponse(probeResponse.Header, probeBody)
@@ -102,8 +104,7 @@ func (a *Auditor) Audit(ctx context.Context, request AuditRequest) (AuditReport,
 			Check{Name: "paid_delivery", Status: checkSkipped, Weight: 25, Evidence: "Payment was not attempted."},
 			Check{Name: "task_outcome", Status: checkSkipped, Weight: 25, Evidence: "No paid response was available to evaluate."},
 		)
-		finalizeReport(&report)
-		return a.persist(report)
+		return a.complete(&report, specInspection, parsedURL, nil)
 	}
 	report.Probe.X402Version = challenge.Version
 	report.Probe.ChallengeTransport = challengeTransport
@@ -121,8 +122,7 @@ func (a *Auditor) Audit(ctx context.Context, request AuditRequest) (AuditReport,
 			Check{Name: "paid_delivery", Status: checkSkipped, Weight: 25, Evidence: "Probe-only audit; payment was not attempted."},
 			Check{Name: "task_outcome", Status: checkSkipped, Weight: 25, Evidence: "A paid response is required for outcome evaluation."},
 		)
-		finalizeReport(&report)
-		return a.persist(report)
+		return a.complete(&report, specInspection, parsedURL, &challenge)
 	}
 
 	selected, err := SelectPayment(challenge.Accepts, request, a.authorizer.policy)
@@ -132,8 +132,7 @@ func (a *Auditor) Audit(ctx context.Context, request AuditRequest) (AuditReport,
 			Check{Name: "paid_delivery", Status: checkSkipped, Weight: 25, Evidence: "No safe payment option was authorized."},
 			Check{Name: "task_outcome", Status: checkSkipped, Weight: 25, Evidence: "No paid response was available to evaluate."},
 		)
-		finalizeReport(&report)
-		return a.persist(report)
+		return a.complete(&report, specInspection, parsedURL, &challenge)
 	}
 	summary := selected.Summary()
 	report.Payment.Selected = &summary
@@ -149,8 +148,7 @@ func (a *Auditor) Audit(ctx context.Context, request AuditRequest) (AuditReport,
 			Check{Name: "paid_delivery", Status: checkFailed, Weight: 25, Evidence: "Could not authorize payment: " + safeError(err)},
 			Check{Name: "task_outcome", Status: checkSkipped, Weight: 25, Evidence: "No paid response was available to evaluate."},
 		)
-		finalizeReport(&report)
-		return a.persist(report)
+		return a.complete(&report, specInspection, parsedURL, &challenge)
 	}
 	report.Payment.Attempted = true
 	report.Payment.Payer = authorization.Payer
@@ -162,8 +160,7 @@ func (a *Auditor) Audit(ctx context.Context, request AuditRequest) (AuditReport,
 			Check{Name: "paid_delivery", Status: checkFailed, Weight: 25, Evidence: "Paid request failed before an HTTP response: " + safeError(err)},
 			Check{Name: "task_outcome", Status: checkSkipped, Weight: 25, Evidence: "No paid response was available to evaluate."},
 		)
-		finalizeReport(&report)
-		return a.persist(report)
+		return a.complete(&report, specInspection, parsedURL, &challenge)
 	}
 	defer paidResponse.Body.Close()
 	report.Tier = "verified"
@@ -187,8 +184,7 @@ func (a *Auditor) Audit(ctx context.Context, request AuditRequest) (AuditReport,
 		})
 	}
 	a.evaluateOutcome(ctx, &report, request, paidResponse.StatusCode, report.Payment.ContentType, paidBody)
-	finalizeReport(&report)
-	return a.persist(report)
+	return a.complete(&report, specInspection, parsedURL, &challenge)
 }
 
 func (a *Auditor) validateRequest(ctx context.Context, request AuditRequest) (*url.URL, string, error) {
@@ -216,6 +212,9 @@ func (a *Auditor) validateRequest(ctx context.Context, request AuditRequest) (*u
 	}
 	if len(request.Body) > 0 && !json.Valid(request.Body) {
 		return nil, "", &ValidationError{Message: "body must be valid JSON"}
+	}
+	if request.GenerateRepairs && !request.SpecReview {
+		return nil, "", &ValidationError{Message: "generate_repairs requires spec_review to be true"}
 	}
 	parsed, err := a.target.ValidateURL(ctx, strings.TrimSpace(request.URL))
 	if err != nil {
@@ -315,6 +314,16 @@ func (a *Auditor) persist(report AuditReport) (AuditReport, error) {
 	return report, nil
 }
 
+func (a *Auditor) complete(report *AuditReport, inspection *specInspection, target *url.URL, challenge *PaymentChallenge) (AuditReport, error) {
+	if inspection != nil {
+		checks, result := inspection.finalize(target, challenge, report.Method)
+		report.SpecReview = &result
+		report.Checks = append(report.Checks, checks...)
+	}
+	finalizeReport(report)
+	return a.persist(*report)
+}
+
 func finalizeReport(report *AuditReport) {
 	totalWeight, assessedWeight, points := 0, 0, 0
 	hasFailure, hasWarning := false, false
@@ -341,6 +350,9 @@ func finalizeReport(report *AuditReport) {
 	case hasFailure:
 		report.Verdict = "FAIL"
 		report.Summary = "One or more required checks failed. Review the evidence before paying or retrying."
+	case report.Tier == "probe" && hasWarning:
+		report.Verdict = "PROBE_PASS_WITH_WARNINGS"
+		report.Summary = "The endpoint returned a valid x402 challenge without payment, but its public service contract needs repair."
 	case report.Tier == "probe":
 		report.Verdict = "PROBE_PASS"
 		report.Summary = "The endpoint returned a valid x402 challenge; no payment was made."

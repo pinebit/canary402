@@ -1,8 +1,8 @@
 # Canary402
 
-## The mystery shopper for paid agents
+## The service-contract inspector and mystery shopper for paid agents
 
-> Before your agent pays a new service, Canary402 pays it once and tells you whether it actually worked.
+> Before your agent integrates with or pays a service, Canary402 checks the contract and verifies the delivery.
 
 ## Problem
 
@@ -10,18 +10,19 @@ x402 discovery can tell an agent that a paid service exists, but not whether the
 
 ## Concept
 
-Canary402 is an agent that performs a real, paid, end-to-end test of another x402 service. A requester supplies an endpoint and a simple expectation, such as:
+Canary402 is an agent that first determines whether another x402 service is understandable to an autonomous buyer and can then perform a real, paid, end-to-end test. A requester supplies an endpoint and a simple expectation, such as:
 
 > Test this weather agent with Istanbul and verify that it returns a temperature.
 
 Canary402:
 
-1. Discovers the endpoint's API and payment specification.
-2. Sends an unpaid request and validates the `402 Payment Required` response.
-3. Checks the requested price against a strict spending limit.
-4. Makes one real paid request using its Obol wallet.
-5. Validates the response schema and requested outcome.
-6. Produces a timestamped, machine-readable and human-readable report.
+1. Inspects the endpoint's OpenAPI, ERC-8004 registration, skill document, and x402 discovery metadata.
+2. Reports missing or unusable contracts and optionally generates value-free OpenAPI/Bazaar repair templates.
+3. Sends an unpaid request and validates the `402 Payment Required` response.
+4. Checks the requested price against a strict spending limit.
+5. Makes one real paid request using its Obol wallet only when explicitly authorized.
+6. Validates the response schema and requested outcome.
+7. Produces a timestamped, machine-readable and human-readable report.
 
 An example report might contain:
 
@@ -38,7 +39,7 @@ Warning:       Discovery document omits an example response
 
 ## Core value proposition
 
-Canary402 does not merely check whether a URL is online. It spends real money, exercises the protected service end-to-end, evaluates the delivered result, and produces evidence.
+Canary402 does not merely check whether a URL is online. It determines whether another agent can understand the service contract, proposes repairs for integration gaps, and—when authorized—spends real money, exercises the protected service end-to-end, evaluates the delivered result, and produces evidence.
 
 The report should distinguish between:
 
@@ -110,6 +111,9 @@ The defining feature is a real post-payment mystery-shopping test with task-spec
 The first version should:
 
 - Support a single public HTTPS JSON `GET` or `POST` endpoint.
+- Inspect fixed, same-origin OpenAPI, ERC-8004 registration, and skill-document paths.
+- Compare documented operations with live challenge resource and Bazaar metadata.
+- Generate bounded, value-free repair templates without inventing business semantics.
 - Require the requester to state the expected result.
 - Validate the unpaid challenge before authorizing payment.
 - Enforce a maximum downstream price and per-audit budget.
@@ -133,11 +137,11 @@ The first version should:
 
 An audit requester pays a fixed amount. Part of that payment funds the downstream probe, and the remainder is the Canary402 service fee. Failed audits should clearly state whether downstream payment settled and which costs were incurred.
 
-Possible later products include recurring uptime monitoring, batch audits, competitive agent bake-offs, buyer-side routing, signed reliability attestations, and automatic pre-purchase checks for autonomous agents.
+Possible later products include recurring uptime monitoring, batch audits, competitive agent bake-offs, buyer-side routing, and automatic pre-purchase checks for autonomous agents. Witness-style signed or on-chain attestations are intentionally outside the current product.
 
 ## One-line demo
 
-> Give Canary402 a paid agent URL and an expectation; it makes a real x402 purchase and returns a public, evidence-backed verdict.
+> Give Canary402 a paid agent URL; it checks whether agents can understand it, proposes the missing contract, and can make one budgeted purchase to return a public evidence-backed verdict.
 
 ## Status
 
@@ -146,6 +150,8 @@ Implemented and live for the Obol Stack/Agents Hackathon.
 The current MVP includes:
 
 - A deterministic Go audit API for public HTTPS JSON `GET` and `POST` targets.
+- Optional specification review for public JSON OpenAPI 3.x, ERC-8004 registration, skill.md, live challenge resource URLs, and Bazaar metadata.
+- Deterministic OpenAPI/Bazaar repair templates that retain request shapes but not example values.
 - Probe-only and explicitly authorized paid modes with a `0.02 USDC` operator cap.
 - x402 v2 `exact`/EIP-3009 support for canonical USDC on Base and Base Sepolia.
 - Remote-signer integration, SSRF controls, bounded response capture, and OpenRouter semantic evaluation.

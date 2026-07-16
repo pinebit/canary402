@@ -1,0 +1,10 @@
+{
+  "url": "https://seller.example.com/services/weather/current",
+  "method": "POST",
+  "body": {
+    "city": "Istanbul"
+  },
+  "spec_review": true,
+  "generate_repairs": true,
+  "pay": false
+}

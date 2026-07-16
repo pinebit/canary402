@@ -2,6 +2,7 @@ package canary
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -25,5 +26,31 @@ func TestHTTPHandlerRejectsUnknownFields(t *testing.T) {
 	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestHTTPHandlerAdvertisesSpecReview(t *testing.T) {
+	t.Parallel()
+	auditor, store := testAuditor(t)
+	handler := NewHTTPHandler(auditor, store, HTTPHandlerConfig{MaxConcurrent: 1, Version: "test", Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+
+	req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	var document map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &document); err != nil {
+		t.Fatal(err)
+	}
+	components := document["components"].(map[string]any)
+	schemas := components["schemas"].(map[string]any)
+	auditRequest := schemas["AuditRequest"].(map[string]any)
+	properties := auditRequest["properties"].(map[string]any)
+	for _, field := range []string{"spec_review", "generate_repairs", "pay"} {
+		if _, exists := properties[field]; !exists {
+			t.Fatalf("OpenAPI is missing %s", field)
+		}
 	}
 }

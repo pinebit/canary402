@@ -59,7 +59,7 @@ else
   REGISTRATION_ENABLED=false
 fi
 obol kubectl -n "$NAMESPACE" patch serviceoffer "$NAME" --type=merge \
-  -p="{\"spec\":{\"registration\":{\"enabled\":$REGISTRATION_ENABLED,\"name\":\"Canary402\",\"description\":\"Canary402 probes an x402-paid service, optionally makes one budget-capped downstream payment, and returns a public evidence-backed reliability report.\"}}}"
+  -p="{\"spec\":{\"registration\":{\"enabled\":$REGISTRATION_ENABLED,\"name\":\"Canary402\",\"description\":\"Canary402 inspects an x402 service contract, generates repair templates, optionally makes one budget-capped payment, and returns a public evidence-backed report.\"}}}"
 
 if [ "$REGISTRATION_ENABLED" = false ]; then
   echo "No $NETWORK AgentIdentity exists; ERC-8004 registration remains disabled."

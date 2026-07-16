@@ -1,10 +1,10 @@
 # Canary402
 
-Canary402 is the mystery shopper for paid agents:
+Canary402 is the service-contract inspector and mystery shopper for paid agents:
 
-> Before your agent pays a new service, Canary402 pays it once and tells you whether it actually worked.
+> Before your agent integrates with or pays a service, Canary402 checks the contract and verifies the delivery.
 
-It validates an x402 challenge, enforces an explicit caller budget and a stricter operator budget, signs one payment through the Obol remote signer, retries the request, evaluates the result through the configured OpenRouter model, and saves a public evidence-backed report.
+It inspects public service specifications, generates value-free repair templates, validates the live x402 challenge, optionally makes one strictly budgeted payment through the Obol remote signer, evaluates the delivered result through the configured OpenRouter model, and saves a public evidence-backed report.
 
 The original concept is preserved in [idea.md](idea.md).
 
@@ -23,19 +23,19 @@ The service exposes:
 
 | Route | Obol gate | Purpose |
 |---|---|---|
-| `POST /services/canary402-agent/v1/chat/completions` | Paid | Ask the Hermes Agent to run and explain an audit |
-| `POST /services/canary402/audit` | Paid | Probe a target and optionally make one downstream payment |
+| `POST /services/canary402-agent/v1/chat/completions` | Paid | Ask the Hermes Agent to inspect, repair, probe, or verify a service |
+| `POST /services/canary402/audit` | Paid | Inspect specifications, probe a target, and optionally make one downstream payment |
 | `GET /services/canary402/reports/{id}` | Free | Retrieve a persisted public report |
 | `GET /services/canary402/health` | Free | Readiness and configuration status |
 | `GET /openapi.json` | Free | Storefront OpenAPI discovery for the current offers and routes |
 | `GET /.well-known/agent-registration.json` | Free | Active ERC-8004 identity and service endpoints |
 
-The flow has two separate economic decisions:
+Specification inspection and repair generation never authorize downstream spend. The full flow still has two separate economic decisions:
 
 1. A caller pays Canary402's `/audit` route through the Obol ServiceOffer.
 2. Canary402 pays the audited target only when the request contains `"pay": true`, the challenge has exactly one supported option, and that option is within both spending caps.
 
-Calling Canary402 does not implicitly authorize a downstream payment.
+Calling Canary402—or requesting a specification review—does not implicitly authorize a downstream payment.
 
 ## Talk to the Canary402 Agent
 
@@ -65,7 +65,7 @@ const response = await fetchWithPayment(
       stream: false,
       messages: [{
         role: "user",
-        content: "Probe https://seller.example.com/weather in probe-only mode. Do not make a downstream payment.",
+        content: "Review the specification and probe https://seller.example.com/weather. Generate repair templates, but do not make a downstream payment.",
       }],
     }),
   },
@@ -74,13 +74,13 @@ const response = await fetchWithPayment(
 console.log(response.status, await response.json());
 ```
 
-Use a test wallet with Base Sepolia USDC and keep its key outside source control. The Agent defaults to probe-only. It will authorize a downstream payment only when the message explicitly requests one and supplies both a network and maximum atomic amount.
+Use a test wallet with Base Sepolia USDC and keep its key outside source control. The Agent defaults to no downstream payment. It will authorize one only when the message explicitly requests it and supplies both a network and maximum atomic amount.
 
-A verified no-spend Agent run produced [report 76b56cd0a830d0779ecb7cdd86259856](https://andrei-obol-agent.dvlabs.dev/services/canary402/reports/76b56cd0a830d0779ecb7cdd86259856).
+A verified no-spend Agent run produced [report 76b56cd0a830d0779ecb7cdd86259856](https://andrei-obol-agent.dvlabs.dev/services/canary402/reports/76b56cd0a830d0779ecb7cdd86259856). The combined SpecSmith mode is also live: [report 433d427e0fba2283a5166af695b7dea7](https://andrei-obol-agent.dvlabs.dev/services/canary402/reports/433d427e0fba2283a5166af695b7dea7) matched the public Agent operation and x402 resource, validated all three discovery documents and Bazaar schemas, generated repair proposals, and made no downstream payment.
 
 ## Use the Canary402 API directly
 
-Canary402 is an HTTP agent service. Give it the paid endpoint you want tested, the request that endpoint expects, and a plain-language success condition.
+Canary402 is an HTTP agent service. Give it the paid endpoint you want inspected, the request that endpoint expects, and—when testing delivery—a plain-language success condition.
 
 ### 1. Inspect the service and price
 
@@ -103,10 +103,14 @@ curl -sS -D - -o /dev/null \
 
 ### 2. Choose an audit mode
 
+- **Specification review** (`"spec_review": true`) fetches bounded copies of `/openapi.json`, `/.well-known/agent-registration.json`, and `/skill.md`, compares them with the requested operation and live 402 metadata, and reports integration gaps.
+- **Repair generation** (`"generate_repairs": true`) adds proposed OpenAPI and Bazaar fragments. It requires specification review and never copies example values, but caller-supplied JSON property names can appear in the public report.
 - **Probe-only** (`"pay": false`) validates reachability and the x402 payment challenge. It never signs or sends a payment.
 - **Verified** (`"pay": true`) performs the probe, selects one supported option within the supplied budget, signs one authorization, retries the target, and judges the delivered response.
 
-Start with probe-only. Use verified mode only after reviewing the advertised price and funding the Canary402 wallet on the requested network.
+The modes compose: a request can inspect specifications, generate repairs, probe the challenge, and—only when `pay` is explicitly true—verify paid delivery. Start without downstream payment. Use verified mode only after reviewing the advertised price and funding the Canary402 wallet on the requested network.
+
+A complete no-spend request is available in [examples/audit-spec-review.json](examples/audit-spec-review.json).
 
 ### 3. Submit the paid audit request
 
@@ -136,6 +140,8 @@ const response = await fetchWithPayment(
       method: "POST",
       body: { city: "Istanbul" },
       expectation: "The response contains a numeric current temperature for Istanbul.",
+      spec_review: true,
+      generate_repairs: true,
       pay: false,
     }),
   },
@@ -155,6 +161,8 @@ Request fields:
 | `body` | No | JSON body for a `POST` request, up to 64 KiB |
 | `expectation` | No | Plain-language condition evaluated against a successful response |
 | `expected_status` | No | Exact expected status; otherwise any `2xx` is accepted |
+| `spec_review` | No | Inspect public OpenAPI, ERC-8004 registration, skill.md, and live x402 metadata |
+| `generate_repairs` | With `spec_review` | Publish proposed, value-free OpenAPI and Bazaar fragments; request property names may become public |
 | `pay` | No | `false` by default; enables one downstream payment when `true` |
 | `max_payment_atomic` | With `pay` | Maximum atomic token amount Canary402 may authorize |
 | `payment_network` | Recommended with `pay` | `base` or `base-sepolia` |
@@ -164,8 +172,10 @@ Supplying an `expectation` asks Canary402 to send a bounded excerpt of the targe
 
 ### 4. Read and share the report
 
-The response contains an `id`, `verdict`, `score`, `coverage_percent`, and five evidence-bearing checks:
+The response contains an `id`, `verdict`, `score`, `coverage_percent`, and evidence-bearing checks. Specification reviews add the first two checks to the existing payment/delivery checks:
 
+- `service_discovery`
+- `request_contract`
 - `reachability`
 - `x402_challenge`
 - `payment_budget`
@@ -177,6 +187,7 @@ Possible verdicts:
 | Verdict | Meaning |
 |---|---|
 | `PROBE_PASS` | The payment challenge is valid, but no payment was made |
+| `PROBE_PASS_WITH_WARNINGS` | No payment was made; the challenge worked, but public service-contract metadata needs repair |
 | `PASS` | Challenge, paid delivery, and requested outcome all passed |
 | `PASS_WITH_WARNINGS` | Paid delivery worked, but part of evaluation was unavailable or uncertain |
 | `FAIL` | At least one required check failed |
@@ -189,7 +200,9 @@ curl -sS https://andrei-obol-agent.dvlabs.dev/services/canary402/reports/<report
 
 `score` measures the checks that ran; `coverage_percent` shows how much of the full paid flow was actually exercised. A probe-only score must therefore be read together with its lower coverage.
 
-Reports do not contain the purchased response body. They publish status, latency, content type, captured byte count, a SHA-256 digest, payment terms, settlement evidence when available, and the evaluator's short reason.
+Reports do not contain the purchased response body or fetched discovery-document bodies. They publish status, latency, content type, captured byte count, SHA-256 digests, payment terms, settlement evidence when available, and the evaluator's short reason.
+
+When requested, `spec_review` contains document availability, the matched OpenAPI operation, concrete-schema flags, resource/Bazaar comparisons, structured findings, and proposed repair fragments. Repairs are deterministic starting points, not authoritative service semantics: sellers must review required fields, examples, descriptions, and output schemas before publishing them.
 
 The report's `challenge_transport` shows whether the target used the current `PAYMENT-REQUIRED` header or Obol's JSON-body compatibility path.
 
@@ -252,6 +265,8 @@ curl --noproxy '*' -sS http://127.0.0.1:18080/audit \
     "method": "POST",
     "body": {"city": "Istanbul"},
     "expectation": "The response contains a numeric temperature for Istanbul.",
+    "spec_review": true,
+    "generate_repairs": true,
     "pay": false
   }'
 ```
@@ -282,6 +297,9 @@ The public service fails closed:
 - Redirects are never followed, especially after attaching a payment authorization.
 - Request bodies are limited to 64 KiB and must be JSON.
 - Target responses are limited to 1 MiB. Response bodies are not persisted or published; reports contain only the captured byte count and SHA-256 digest.
+- Specification discovery fetches only three fixed same-origin paths, never follows redirects, limits each document to 256 KiB, and stores only metadata and digests.
+- Repair generation never copies request or response example values. It can publish caller-supplied JSON property names, so do not enable it for confidential request shapes.
+- Generated fragments contain explicit TODO/generic sections and remain proposals until the seller validates them.
 - URLs are stored without query strings so query credentials cannot leak into reports.
 - Client-supplied authentication and payment headers are not accepted or forwarded.
 - Downstream payment is opt-in and bounded by the request cap and `CANARY_MAX_PAYMENT_ATOMIC`.
@@ -301,6 +319,8 @@ It understands both current standard headers (`PAYMENT-REQUIRED`, `PAYMENT-SIGNA
 
 Unsupported or ambiguous offers are reported without signing anything. Permit2, arbitrary ERC-20 assets, asynchronous job polling, custom caller headers, and agent-style SSE endpoints are deliberately outside the first version.
 
+Specification review currently analyzes JSON OpenAPI 3.x documents at `/openapi.json`, the standard ERC-8004 registration path, `/skill.md`, exact or templated OpenAPI paths, JSON request bodies, successful JSON responses, challenge resource URLs, and Bazaar metadata. It deliberately does not follow external `$ref` documents, parse YAML OpenAPI, scrape arbitrary HTML links, or infer business semantics/required fields.
+
 ## Verification
 
 ```bash
@@ -310,7 +330,7 @@ make status
 make logs
 ```
 
-The unit suite includes a complete simulated flow: challenge, cap enforcement, remote-signature request, x402 envelope, paid retry, settlement evidence, semantic evaluation, and persisted report. The live deployment has also completed real Base Sepolia and Base mainnet settlements, linked above.
+The unit suite includes a complete simulated flow: specification discovery, path-template matching, deterministic repair generation, challenge comparison, cap enforcement, remote-signature request, x402 envelope, paid retry, settlement evidence, semantic evaluation, and persisted reports. Generative and fuzz tests enforce deterministic, bounded parsing and the invariant that inferred schemas contain no example values. The live deployment has also completed real Base Sepolia and Base mainnet settlements, linked above.
 
 ## Configuration
 
@@ -343,7 +363,7 @@ git check-ignore -v .env
 
 ## Deployment status
 
-Verified on 15 July 2026:
+Verified on 16 July 2026:
 
 - Permanent Cloudflare tunnel active with four connected connectors.
 - The dashboard catalog lists both `llm/canary402` and `agent-canary402/canary402` as Ready offers.
@@ -352,7 +372,8 @@ Verified on 15 July 2026:
 - Landing page, storefront OpenAPI discovery, and the Agent registration document return `200` publicly.
 - Free `/services/canary402/health` and `/services/canary402/reports/{id}` routes return `200` publicly.
 - Unpaid requests to both paid endpoints return x402 v2 `402` challenges.
-- The deployed service reports `semantic_evaluation: true`, and `openrouter/auto` has answered a live evaluation request.
+- The deployed service reports `semantic_evaluation: true`, `spec_review: true`, and `repair_generation: true`; `openrouter/auto` has answered a live evaluation request.
+- A live SpecSmith review returned `PROBE_PASS`, score 100, and `spec_review.status: READY` after matching the public Agent's OpenAPI operation, ERC-8004 registration, skill document, x402 resource, and Bazaar schemas. It generated deterministic repair proposals with `payment.attempted: false`; see [report 433d427e0fba2283a5166af695b7dea7](https://andrei-obol-agent.dvlabs.dev/services/canary402/reports/433d427e0fba2283a5166af695b7dea7).
 - A public probe report is available at [report 436e24422caa55b08f50b049a41c15fe](https://andrei-obol-agent.dvlabs.dev/services/canary402/reports/436e24422caa55b08f50b049a41c15fe).
 - Real inbound and downstream paid settlements have succeeded, as documented in [Live paid verification](#live-paid-verification).
 
