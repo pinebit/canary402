@@ -1,9 +1,8 @@
-.PHONY: test vet build docker deploy sell sell-agent smoke status logs
+.PHONY: test vet build docker deploy sell-agent smoke status logs
 
 IMAGE ?= canary402:dev
 VERSION ?= dev
 GOCACHE ?= /tmp/canary402-gocache
-CANARY_HOSTNAME ?=
 
 test:
 	GOCACHE=$(GOCACHE) go test ./...
@@ -20,9 +19,6 @@ docker:
 deploy:
 	IMAGE=$(IMAGE) VERSION=$(VERSION) ./scripts/deploy-local.sh
 
-sell:
-	CANARY_HOSTNAME=$(CANARY_HOSTNAME) ./scripts/publish-local.sh
-
 sell-agent:
 	./scripts/publish-agent.sh
 
@@ -31,7 +27,7 @@ smoke:
 
 status:
 	obol kubectl -n llm get deploy,pod,svc,pvc -l app.kubernetes.io/name=canary402
-	-obol sell status canary402 -n llm
+	obol sell status canary402 -n agent-canary402
 
 logs:
 	obol kubectl -n llm logs deploy/canary402 -f

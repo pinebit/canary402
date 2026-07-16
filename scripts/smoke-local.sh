@@ -20,9 +20,4 @@ done
 
 curl --noproxy '*' -fsS "http://127.0.0.1:$PORT/health"
 echo
-
-if obol kubectl -n llm get serviceoffer canary402 >/dev/null 2>&1; then
-  obol sell test canary402 -n llm --path /audit
-else
-  echo "Service is healthy; run 'make sell' to add the local x402 gate."
-fi
+echo "Internal Canary402 API is healthy; only the Agent is published for sale."

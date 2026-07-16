@@ -1,50 +1,8 @@
 # Obol v0.13.0 builds shared-origin x402 resource URLs from the request seen by
 # Traefik. Cloudflare terminates TLS before the in-cluster HTTP gateway, so the
 # verifier otherwise advertises http:// URLs even though buyers used HTTPS.
-# These hostname-specific routes retain the canonical shared paths and restore
-# the external scheme/host before the request reaches the verifier.
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: canary402-public-https
-  namespace: llm
-  labels:
-    app.kubernetes.io/name: canary402
-    app.kubernetes.io/component: routing-workaround
-spec:
-  hostnames:
-    - andrei-obol-agent.dvlabs.dev
-  parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: traefik-gateway
-      namespace: traefik
-      sectionName: web
-  rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /services/canary402
-      filters:
-        - type: RequestHeaderModifier
-          requestHeaderModifier:
-            set:
-              - name: X-Forwarded-Host
-                value: andrei-obol-agent.dvlabs.dev
-              - name: X-Forwarded-Proto
-                value: https
-        - type: ExtensionRef
-          extensionRef:
-            group: traefik.io
-            kind: Middleware
-            name: so-canary402-limits
-      backendRefs:
-        - group: ""
-          kind: Service
-          name: x402-verifier
-          namespace: x402
-          port: 8080
----
+# This hostname-specific route retains the Agent's canonical shared path and
+# restores the external scheme/host before the request reaches the verifier.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

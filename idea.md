@@ -155,8 +155,8 @@ The current MVP includes:
 - Probe-only and explicitly authorized paid modes with a `0.02 USDC` operator cap.
 - x402 v2 `exact`/EIP-3009 support for canonical USDC on Base and Base Sepolia.
 - Remote-signer integration, SSRF controls, bounded response capture, and OpenRouter semantic evaluation.
-- Free public evidence reports that retain response digests rather than purchased response bodies.
-- A Hermes/OpenRouter Agent wrapper and a direct HTTP API, each sold for `0.001` Base Sepolia USDC.
+- Internally retained evidence reports that contain response digests rather than purchased response bodies.
+- One public Hermes/OpenRouter Agent sold for `0.001` Base mainnet USDC, backed by an internal deterministic HTTP API that is neither sold nor publicly routed.
 - A permanent deployment at [andrei-obol-agent.dvlabs.dev](https://andrei-obol-agent.dvlabs.dev) using ERC-8004 Agent ID 8104.
 - Successful paid settlement tests on Base Sepolia and Base mainnet.
 
