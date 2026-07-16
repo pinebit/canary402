@@ -130,6 +130,9 @@ func (h *apiHandler) openapi(w http.ResponseWriter, _ *http.Request) {
 			"description": "A specification inspector, repair generator, and budget-capped end-to-end mystery shopper for x402 services.",
 		},
 		"paths": map[string]any{
+			"/": map[string]any{"get": map[string]any{
+				"summary": "Read Canary402 service information", "responses": map[string]any{"200": map[string]any{"description": "Canary402 landing page"}},
+			}},
 			"/audit": map[string]any{"post": map[string]any{
 				"summary": "Audit an x402 service", "operationId": "auditService",
 				"requestBody": map[string]any{"required": true, "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"$ref": "#/components/schemas/AuditRequest"}}}},

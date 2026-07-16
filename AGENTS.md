@@ -61,7 +61,7 @@ The remote signer owns the wallet key. Canary402 only calls its typed-data signi
 - Deployment and Service: `canary402`
 - Reports PVC: `canary402-reports`
 - The deployment is live and Ready in the local cluster.
-- Live `/health` confirmed `semantic_evaluation: true`, `spec_review: true`, and `repair_generation: true` on version `0.2.1-dev`.
+- Live `/health` confirmed `semantic_evaluation: true`, `spec_review: true`, and `repair_generation: true` on version `0.2.2-dev`.
 - A live audit of `https://example.com/` confirmed the request path and an actual response from `openrouter/auto`. The report correctly failed the x402 challenge check and passed the semantic expectation.
 - A live probe of a current-header x402 endpoint produced report `436e24422caa55b08f50b049a41c15fe`: `PROBE_PASS`, score 100, coverage 40%, without payment.
 - The permanent hostname is `https://andrei-obol-agent.dvlabs.dev`; the Cloudflare-managed tunnel is active with four connectors.
@@ -70,7 +70,7 @@ The remote signer owns the wallet key. Canary402 only calls its typed-data signi
 - The Agent's isolation policy is extended only to `llm` pods labeled `app.kubernetes.io/name=canary402` on TCP 8080 by `deploy/agent-egress.yaml`.
 - The `agent-canary402/canary402` ServiceOffer is Ready as `type=agent` at `/services/canary402-agent`, priced at `0.001 USDC` on Base Sepolia.
 - A direct authenticated Agent run invoked the Canary402 API successfully and returned `PROBE_PASS`, score 100, coverage 40%, report `76b56cd0a830d0779ecb7cdd86259856`.
-- Public `/`, `/openapi.json`, `/.well-known/agent-registration.json`, shared health/report routes, and both paid endpoints have been verified. Unpaid calls to both paid endpoints return x402 v2 `402` challenges. `/.well-known/x402` is not exposed on the shared v0.13 storefront and currently returns `404`.
+- Public `/`, `/openapi.json`, `/.well-known/agent-registration.json`, `/services/canary402`, shared health/report routes, and both paid endpoints have been verified. Unpaid calls to both paid endpoints return x402 v2 `402` challenges. `/.well-known/x402` is not exposed on the shared v0.13 storefront and currently returns `404`.
 - Public unpaid Agent requests at `/services/canary402-agent/v1/chat/completions` return a valid x402 v2 `402` challenge whose metadata advertises Hermes and `openrouter/auto`.
 - Both offers share ERC-8004 Agent ID `8104` on Base Sepolia. The mint transaction is `0xdf47245cdceda5a7849485cb7ab86f00dec6b681636064fe39e73e7ff1c2c17e`.
 - A real paid call to the public Agent succeeded for `0.001` Base Sepolia test USDC and produced report `3616014252977a40a71fabcfb460f9c7`; settlement transaction: `0x8dd8842556ea4a4f7a07fbd45d6647cd769370ed326dd921317d93de4026f91b`.
@@ -78,10 +78,10 @@ The remote signer owns the wallet key. Canary402 only calls its typed-data signi
 - The operator hard cap is now `20000` atomic USDC (`0.02 USDC`). Every paid downstream audit still requires explicit target, network, and caller cap authorization.
 - Optional `spec_review` inspects bounded same-origin OpenAPI, ERC-8004 registration, skill.md, live challenge resource URLs, and Bazaar metadata before the normal probe/payment flow.
 - Optional `generate_repairs` publishes deterministic OpenAPI/Bazaar proposal fragments. It never copies example values, but caller-supplied JSON property names can become public and must not be confidential.
-- The deployed `0.2.1-dev` API rejects IPv4-mapped CGNAT targets such as `https://[::ffff:100.64.0.1]/` with HTTP 400 before connecting or authorizing payment; standard NAT64 prefixes are blocked as well.
+- The deployed `0.2.2-dev` API rejects IPv4-mapped CGNAT targets such as `https://[::ffff:100.64.0.1]/` with HTTP 400 before connecting or authorizing payment; standard NAT64 prefixes are blocked as well.
 - A live no-spend SpecSmith review of the public Agent endpoint produced report `433d427e0fba2283a5166af695b7dea7`: `PROBE_PASS`, score 100, `spec_review.status=READY`, all discovery documents valid, exact challenge-resource match, Bazaar input/output schemas present, repair proposals generated, and `payment.attempted=false`.
 - Witness-style signatures and onchain attestations are intentionally outside Canary402's current scope; reports are public point-in-time evidence, not trust attestations.
-- x402scan registration was attempted after the endpoint worked but returned a generic “no valid paid resources” result. The user chose to stop pursuing that listing; do not retry unless they explicitly reopen it.
+- x402scan registration was retried after repairing the free HTTP service root. `@agentcash/discovery` finds both paid routes and checks each successfully, while the authenticated registry still returns a generic “no valid paid resources” result. Do not retry without new registry diagnostics or explicit approval for a dedicated per-offer origin.
 
 ## Architecture
 
@@ -100,7 +100,7 @@ Important files:
 - `deploy/x402-llm-reference-grant.yaml`: additive workaround for the same-named cross-namespace ServiceOffer grant collision.
 - `agent/objective.md`: Hermes Agent objective, tool contract, and downstream-payment safety rules.
 - `scripts/deploy-local.sh`: image build/import and cluster deployment.
-- `scripts/publish-local.sh`: idempotent Obol ServiceOffer publication on the shared permanent hostname; avoids duplicate ERC-8004 minting, reuses an existing identity, and applies v0.13 routing workarounds.
+- `scripts/publish-local.sh`: idempotent Obol ServiceOffer publication on the shared permanent hostname; reconciles the complete route table, avoids duplicate ERC-8004 minting, reuses an existing identity, and applies v0.13 routing workarounds.
 - `scripts/publish-agent.sh`: idempotently creates/updates the Agent, applies egress, publishes the `type=agent` offer, and reuses an existing shared identity.
 - `scripts/smoke-local.sh`: temporary port-forward health and offer smoke test.
 - `README.md`: operator and developer instructions.
@@ -247,7 +247,7 @@ Important v0.13 workarounds:
 3. Cloudflare terminates TLS before the in-cluster gateway. `deploy/public-tunnel-routes.yaml` restores `X-Forwarded-Proto: https` and the public host before requests reach the verifier, preventing `http://` challenge resource URLs.
 4. `--description` cannot be used with `--no-register` in v0.13 even though CLI help says descriptions also feed the payment page/storefront. The scripts patch a concise registration description only after an existing Agent ID is available.
 
-x402scan listing is intentionally inactive after its crawler rejected the live paid resources. Do not retry it unless the user explicitly changes that decision. Never register `obol.stack`, localhost, or a temporary `trycloudflare.com` URL.
+x402scan listing is inactive after its authenticated registry rejected the live paid resources despite successful official discovery checks. Do not retry without new diagnostics or explicit approval for a dedicated per-offer origin. Never register `obol.stack`, localhost, or a temporary `trycloudflare.com` URL.
 
 ## Obol v0.13 integration details
 
@@ -311,7 +311,7 @@ Preserve these findings for the final hackathon feedback:
 - Both ServiceOffers report `Registered=True` and share Agent ID 8104; `obol sell status` still displays `Registration Tx: (not set)`.
 - `obol sell register` is an on-chain identity operation, separate from having Ready x402 offers. Do not rerun it: that could mint a duplicate identity.
 - The signing/payout wallet address is public, but its private key remains exclusively in the Obol remote signer. Never try to export it.
-- x402scan is a separate external listing. Its registration attempt failed despite live paid resources, and the user chose to ignore it. Do not retry without new explicit direction.
+- x402scan is a separate external listing. Its registration attempt failed despite live paid resources and successful official discovery checks; a dedicated origin would be a separate routing decision.
 
 ## Current next steps
 
@@ -320,4 +320,4 @@ Preserve these findings for the final hackathon feedback:
 3. Require explicit target, network, and atomic cap approval before every new real downstream payment.
 4. Add Permit2, async job support, response-schema hints, or private buyer-side result capture only after the basic paid flow remains stable.
 5. Extend specification support to YAML or external references only with the same SSRF, size, depth, and privacy invariants.
-6. Leave x402scan alone unless the user explicitly reopens that work.
+6. Retry x402scan only with new registry diagnostics or explicit approval for a dedicated per-offer origin.

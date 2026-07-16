@@ -15,7 +15,7 @@ The hackathon deployment is live at **https://andrei-obol-agent.dvlabs.dev**. Tw
 
 The Agent calls the API internally, so using the Agent does not incur a second Canary402 API charge. Health checks, discovery, and completed reports are free.
 
-Both offers share [ERC-8004 Agent ID 8104 on Base Sepolia](https://sepolia.basescan.org/nft/0x8004A818BFB912233c491871b3d84c89A494BD9e/8104). The deployment is intentionally not listed on x402scan.
+Both offers share [ERC-8004 Agent ID 8104 on Base Sepolia](https://sepolia.basescan.org/nft/0x8004A818BFB912233c491871b3d84c89A494BD9e/8104). The deployment is not currently listed on x402scan: its authenticated registry rejects the shared origin even though the official discovery checker and direct probes recognize both live paid resources.
 
 ## Current MVP
 
@@ -23,6 +23,7 @@ The service exposes:
 
 | Route | Obol gate | Purpose |
 |---|---|---|
+| `GET /services/canary402` | Free | Read the Canary402 service landing page |
 | `POST /services/canary402-agent/v1/chat/completions` | Paid | Ask the Hermes Agent to inspect, repair, probe, or verify a service |
 | `POST /services/canary402/audit` | Paid | Inspect specifications, probe a target, and optionally make one downstream payment |
 | `GET /services/canary402/reports/{id}` | Free | Retrieve a persisted public report |
@@ -89,6 +90,7 @@ Open the [Canary402 landing page](https://andrei-obol-agent.dvlabs.dev), or insp
 ```bash
 curl -sS https://andrei-obol-agent.dvlabs.dev/openapi.json
 curl -sS https://andrei-obol-agent.dvlabs.dev/.well-known/agent-registration.json
+curl -sS https://andrei-obol-agent.dvlabs.dev/services/canary402
 curl -sS https://andrei-obol-agent.dvlabs.dev/services/canary402/health
 ```
 
@@ -241,7 +243,7 @@ http://obol.stack:8080/services/canary402/audit
 https://andrei-obol-agent.dvlabs.dev/services/canary402/audit
 ```
 
-The permanent Cloudflare connector is active. `make sell` is idempotent for an existing ServiceOffer. Offer creation uses `--no-register` to avoid minting a duplicate identity; when an existing Base Sepolia identity is present, the script links both offers to it. x402scan listing is a separate operation and is intentionally not enabled for this deployment.
+The permanent Cloudflare connector is active. `make sell` is idempotent for an existing ServiceOffer and reconciles its complete route table. Offer creation uses `--no-register` to avoid minting a duplicate identity; when an existing Base Sepolia identity is present, the script links both offers to it. x402scan listing is a separate external operation and has not succeeded for this deployment.
 
 `make sell-agent` creates or updates the Hermes Agent from [agent/objective.md](agent/objective.md), applies its narrowly scoped [egress policy](deploy/agent-egress.yaml), and publishes `/services/canary402-agent` as `type=agent`. It is also idempotent.
 
@@ -382,16 +384,16 @@ Verified on 16 July 2026:
 - The dashboard catalog lists both `llm/canary402` and `agent-canary402/canary402` as Ready offers.
 - Both offers share Base Sepolia ERC-8004 Agent ID `8104`.
 - A direct authenticated Agent run used `openrouter/auto`, invoked the Canary402 API, and returned a real public probe report.
-- Landing page, storefront OpenAPI discovery, and the Agent registration document return `200` publicly.
+- Landing page, `/services/canary402` service page, storefront OpenAPI discovery, and the Agent registration document return `200` publicly.
 - Free `/services/canary402/health` and `/services/canary402/reports/{id}` routes return `200` publicly.
 - Unpaid requests to both paid endpoints return x402 v2 `402` challenges.
-- The deployed `0.2.1-dev` service reports `semantic_evaluation: true`, `spec_review: true`, and `repair_generation: true`; `openrouter/auto` has answered a live evaluation request.
+- The deployed `0.2.2-dev` service reports `semantic_evaluation: true`, `spec_review: true`, and `repair_generation: true`; `openrouter/auto` has answered a live evaluation request.
 - The live API rejects an IPv4-mapped CGNAT target with HTTP 400 before connecting or authorizing payment; mapped-address equivalence and standard NAT64 blocks are covered by regression and fuzz tests.
 - A live SpecSmith review returned `PROBE_PASS`, score 100, and `spec_review.status: READY` after matching the public Agent's OpenAPI operation, ERC-8004 registration, skill document, x402 resource, and Bazaar schemas. It generated deterministic repair proposals with `payment.attempted: false`; see [report 433d427e0fba2283a5166af695b7dea7](https://andrei-obol-agent.dvlabs.dev/services/canary402/reports/433d427e0fba2283a5166af695b7dea7).
 - A public probe report is available at [report 436e24422caa55b08f50b049a41c15fe](https://andrei-obol-agent.dvlabs.dev/services/canary402/reports/436e24422caa55b08f50b049a41c15fe).
 - Real inbound and downstream paid settlements have succeeded, as documented in [Live paid verification](#live-paid-verification).
 
-x402scan listing is intentionally not active. Do not register the localhost origin or a temporary quick-tunnel URL.
+x402scan listing is not active. After the free service root was repaired, the official AgentCash discovery tool found both paid routes and its endpoint checker accepted each one, but the authenticated x402scan registration backend still returned “no valid paid resources.” Do not register the localhost origin or a temporary quick-tunnel URL.
 
 ## Obol v0.13 publishing notes
 
@@ -409,4 +411,4 @@ Being on sale and being registered are separate. Canary402 is on sale through x4
 
 The remote signer controls the agent wallet. Its private key is intentionally unavailable to this service and must never be copied into the repository.
 
-`obol sell register x402scan` is a different external discovery submission. It was attempted, but the crawler rejected the origin despite live 402 resources; this deployment is intentionally not listed there.
+`obol sell register x402scan` is a different external discovery submission. It was retried after route repair, but the registry rejected the origin despite live 402 resources and successful checks from `@agentcash/discovery`. A dedicated per-offer hostname remains an optional future workaround, not an active configuration.

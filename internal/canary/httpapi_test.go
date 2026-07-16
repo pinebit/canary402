@@ -45,6 +45,10 @@ func TestHTTPHandlerAdvertisesSpecReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	components := document["components"].(map[string]any)
+	paths := document["paths"].(map[string]any)
+	if _, exists := paths["/"]; !exists {
+		t.Fatal("OpenAPI is missing the free service landing operation")
+	}
 	schemas := components["schemas"].(map[string]any)
 	auditRequest := schemas["AuditRequest"].(map[string]any)
 	properties := auditRequest["properties"].(map[string]any)
@@ -52,5 +56,24 @@ func TestHTTPHandlerAdvertisesSpecReview(t *testing.T) {
 		if _, exists := properties[field]; !exists {
 			t.Fatalf("OpenAPI is missing %s", field)
 		}
+	}
+}
+
+func TestHTTPHandlerServesLandingPage(t *testing.T) {
+	t.Parallel()
+	auditor, store := testAuditor(t)
+	handler := NewHTTPHandler(auditor, store, HTTPHandlerConfig{MaxConcurrent: 1, Version: "test", Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	if contentType := resp.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/html") {
+		t.Fatalf("content type=%q", contentType)
+	}
+	if !strings.Contains(resp.Body.String(), "Service-contract inspector") {
+		t.Fatalf("unexpected landing page: %s", resp.Body.String())
 	}
 }

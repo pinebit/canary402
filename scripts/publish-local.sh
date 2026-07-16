@@ -30,6 +30,7 @@ else
     --token USDC \
     --price "$PRICE" \
     --no-register \
+    --route "path=/,methods=GET,gate=free,summary=Read Canary402 service information" \
     --route "path=/audit,methods=POST,gate=paid,price=$PRICE,summary=Inspect and audit an x402 service" \
     --route "path=/reports/*,methods=GET,gate=free,summary=Read a public audit report" \
     --route "path=/health,methods=GET,gate=free,summary=Check Canary402 health" \
@@ -37,6 +38,19 @@ else
 
   "$@"
 fi
+
+# Reconcile the complete route table even when the offer already exists. Any
+# declared route makes the table exhaustive in Obol v0.13, so creation-only
+# flags are not sufficient for idempotent publication or later route changes.
+ROUTES_PATCH="$(
+  jq -cn --arg price "$PRICE" '{spec:{routes:[
+    {path:"/",methods:["GET"],gate:"free",summary:"Read Canary402 service information"},
+    {path:"/audit",methods:["POST"],gate:"paid",price:{perRequest:$price},summary:"Inspect and audit an x402 service"},
+    {path:"/reports/*",methods:["GET"],gate:"free",summary:"Read a public audit report"},
+    {path:"/health",methods:["GET"],gate:"free",summary:"Check Canary402 health"}
+  ]}}'
+)"
+obol kubectl -n "$NAMESPACE" patch serviceoffer "$NAME" --type=merge -p="$ROUTES_PATCH"
 
 # Keep the permanent hostname on the shared storefront. In v0.13.0 a
 # dedicated offer hostname rewrites /audit before the verifier builds its x402
@@ -79,6 +93,7 @@ obol sell test "$NAME" -n "$NAMESPACE" --path /audit
 echo "Local paid endpoint: http://obol.stack:8080/services/canary402/audit"
 if [ -n "$HOSTNAME" ]; then
   echo "Permanent storefront: https://$HOSTNAME"
+  echo "Public service page: https://$HOSTNAME/services/canary402"
   echo "Public paid endpoint: https://$HOSTNAME/services/canary402/audit"
 else
   echo "No permanent hostname was requested; set CANARY_HOSTNAME for public routing."
