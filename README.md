@@ -13,21 +13,24 @@ The original concept is preserved in [idea.md](idea.md).
 The public product is the **Canary402 Agent** at:
 
 ```text
-POST https://andrei-obol-agent.dvlabs.dev/services/canary402-agent/v1/chat/completions
+POST https://andrei-obol-agent.dvlabs.dev/v1/chat/completions
 ```
+
+The previous shared-origin path, `POST /services/canary402-agent/v1/chat/completions`, remains a working compatibility alias.
 
 The Agent is a Hermes/OpenRouter service sold for `0.001 USDC` per request on **Base mainnet**. Its deterministic Go audit API remains deployed inside the Obol cluster and is not sold, advertised, or routed publicly. Calling the Agent therefore incurs one Canary402 charge, not a second internal API charge.
 
 Canary402 is registered as [ERC-8004 Agent ID 59094 on Base mainnet](https://basescan.org/nft/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432/59094), matching its x402 payment network. The same signer also retains the legacy [Agent ID 8104 on Base Sepolia](https://sepolia.basescan.org/nft/0x8004A818BFB912233c491871b3d84c89A494BD9e/8104). Both registration entries point to the same public Agent and are owned by the Canary402 wallet.
 
-Public discovery documents are available from the shared storefront:
+Public discovery documents are available from the dedicated Agent origin:
 
 - `GET https://andrei-obol-agent.dvlabs.dev/openapi.json`
+- `GET https://andrei-obol-agent.dvlabs.dev/.well-known/x402`
 - `GET https://andrei-obol-agent.dvlabs.dev/.well-known/agent-registration.json`
 
-x402scan crawled the permanent origin and registered its single paid resource (`1/1`) after the consolidation to one Base-mainnet offer. The listing command warned only that the generated OpenAPI lacks `info.contact.email`; that field is optional for indexing but enables ownership/contact customization.
+x402scan crawled the migrated dedicated origin and registered its single current paid resource (`1/1`), deprecating the earlier shared-origin resource. The listing command warned only that the generated OpenAPI lacks `info.contact.email`; that field is optional for indexing but enables ownership/contact customization.
 
-The public registration document is active and advertises the Base Agent endpoint. Its Base registration is the primary identity; the Sepolia registration is retained for historical continuity.
+The public registration document is active and advertises only the Base Agent identity and endpoint. The legacy Sepolia registration remains owned by the same wallet and retained in Obol's durable `AgentIdentity` state for historical continuity, but is not advertised by this Base-paid offer.
 
 The old `/services/canary402` HTTP offer and its public health/report routes have intentionally been removed. Reports are still retained internally, and the Agent returns the report ID and an evidence-based interpretation in its response.
 
@@ -52,7 +55,7 @@ registerExactEvmScheme(client, { signer });
 const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 
 const response = await fetchWithPayment(
-  "https://andrei-obol-agent.dvlabs.dev/services/canary402-agent/v1/chat/completions",
+  "https://andrei-obol-agent.dvlabs.dev/v1/chat/completions",
   {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -141,7 +144,17 @@ These are point-in-time tests, not guarantees about either service.
 
 ## Run locally
 
-Prerequisites are an Obol Stack v0.13.0 cluster, Docker, Go 1.25+, and a working LiteLLM/OpenRouter configuration.
+Prerequisites are an Obol Stack v0.14.0-rc0 cluster, Docker, Go 1.25+, and a working LiteLLM/OpenRouter configuration. Install or upgrade the Stack with:
+
+```bash
+OBOL_RELEASE=v0.14.0-rc0 bash <(curl -s https://stack.obol.org)
+# For this existing k3d stack, free its current host ports before forced init.
+k3d cluster stop obol-stack-peaceful-starling
+obol stack init --force --backend k3d --yes
+obol stack up
+```
+
+For a new stack with no existing configuration, use `obol stack init && obol stack up` instead.
 
 ```bash
 make test
@@ -160,12 +173,13 @@ make sell-agent
 This command:
 
 1. creates or updates the Hermes Agent from [agent/objective.md](agent/objective.md);
-2. applies the Agent egress and x402 routing resources;
+2. applies the Agent's narrow cross-namespace egress policy;
 3. reconciles the x402 price to `0.001 USDC` on Base mainnet;
-4. activates the offer against the existing Base Agent ID without minting another identity; and
-5. verifies the local offer.
+4. activates the offer against the existing Base Agent ID without minting another identity;
+5. binds the permanent hostname to v0.14's native dedicated-offer route and persists the resume ledger; and
+6. verifies the local offer.
 
-Forks using another hostname should replace `andrei-obol-agent.dvlabs.dev` in [deploy/public-tunnel-routes.yaml](deploy/public-tunnel-routes.yaml).
+Forks using another hostname should set `CANARY_AGENT_HOSTNAME` before running `make sell-agent`.
 
 ## Direct development requests
 
@@ -251,6 +265,7 @@ Agent publication:
 | `CANARY_AGENT_NETWORK` | `base` | Inbound x402 payment network |
 | `CANARY_AGENT_IDENTITY_NETWORK` | `base` | ERC-8004 identity lookup chain; normally match the payment network |
 | `CANARY_AGENT_PRICE` | `0.001` | Per-request USDC price |
+| `CANARY_AGENT_HOSTNAME` | `andrei-obol-agent.dvlabs.dev` | Dedicated public Agent origin |
 
 LiteLLM authentication comes from the existing `llm/litellm-secrets` Kubernetes secret. Payment signing uses the existing remote signer; its private key is never mounted into Canary402. The signer address is intentionally cached for the process lifetime, so a coordinated signer-key rotation requires restarting Canary402.
 
@@ -265,10 +280,10 @@ git check-ignore -v .env
 
 ## Obol and registration notes
 
-Cloudflare terminates TLS before the in-cluster gateway. Obol v0.13.0 otherwise constructs an `http://` challenge resource for an external HTTPS request, so [deploy/public-tunnel-routes.yaml](deploy/public-tunnel-routes.yaml) restores the external scheme and host for the Agent route.
+Obol v0.14.0-rc0 natively publishes the dedicated hostname, preserves the external HTTPS scheme in x402 challenges, exposes `/.well-known/x402`, and creates namespace-qualified cross-namespace grants. Canary402 therefore no longer carries the v0.13 tunnel-route or ReferenceGrant workarounds.
 
 The primary identity is Base Agent ID `59094`. Its [mint transaction](https://basescan.org/tx/0xa23a51b8a6beb357fd798864b2fd1ca0b97a80f7ca2f66b3ef47b25fadb6fcf5) and [agentURI correction](https://basescan.org/tx/0x4727585e079ae2b06f6faa2a96c0aad8c4c17027c1d409d5ed2979f9aebad60f) succeeded. The corrected on-chain URI is `https://andrei-obol-agent.dvlabs.dev/.well-known/agent-registration.json`.
 
-Legacy Base Sepolia Agent ID `8104` remains owned by the same wallet; its [mint transaction](https://sepolia.basescan.org/tx/0xdf47245cdceda5a7849485cb7ab86f00dec6b681636064fe39e73e7ff1c2c17e) also succeeded. Registration is idempotent only while `x402/AgentIdentity` contains the correct per-chain IDs. Do not delete or overwrite that durable record, and always pass the storefront origin—not a service path—to `obol sell register --endpoint`, because v0.13 appends `/.well-known/agent-registration.json` itself.
+Legacy Base Sepolia Agent ID `8104` remains owned by the same wallet; its [mint transaction](https://sepolia.basescan.org/tx/0xdf47245cdceda5a7849485cb7ab86f00dec6b681636064fe39e73e7ff1c2c17e) also succeeded. Registration is idempotent while `x402/AgentIdentity` contains the correct per-chain IDs. Do not delete or overwrite that durable record, and pass the origin—not a service path—to `obol sell register --origin`.
 
-ERC-8004 identity, an active x402 ServiceOffer, and x402scan discovery are separate states. x402scan previously rejected the shared origin while two Base Sepolia offers were present even though its public checker found both. After consolidation, `obol sell register x402scan` successfully registered the one Base-mainnet Agent resource.
+ERC-8004 identity, an active x402 ServiceOffer, and x402scan discovery are separate states. After the v0.14 dedicated-origin migration, `obol sell register x402scan` idempotently registered `1/1` current resources and deprecated the old shared-origin resource.

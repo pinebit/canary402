@@ -35,8 +35,8 @@ The remote signer owns the wallet key. Canary402 only calls its typed-data signi
 
 ## Local Obol Stack
 
-- Obol release: `v0.13.0`
-- Obol commit: `2b17616`
+- Obol release: `v0.14.0-rc0`
+- Obol commit: `606ba95`
 - Stack ID: `peaceful-starling`
 - k3d cluster: `obol-stack-peaceful-starling`
 - kubectl context: `k3d-obol-stack-peaceful-starling`
@@ -44,6 +44,7 @@ The remote signer owns the wallet key. Canary402 only calls its typed-data signi
 - `/etc/hosts` already contains `127.0.0.1 obol.stack`.
 - Docker and all base Stack workloads are running.
 - LiteLLM is configured for `openrouter/auto` through OpenRouter and has been verified end-to-end.
+- A pre-migration full-stack rollback archive exists at `/private/tmp/obol-stack-v013-pre-v014-20260718.tar.gz` with mode `0600`. It contains secrets and an unencrypted wallet backup: never inspect, print, move into this repository, or share it. Remove it only after the operator no longer needs rollback coverage.
 - The primary Hermes instance is `hermes/obol-agent` in namespace `hermes-obol-agent`.
 - The public wallet address may be obtained with:
 
@@ -68,10 +69,10 @@ The remote signer owns the wallet key. Canary402 only calls its typed-data signi
 - The deterministic `llm/canary402` Deployment and ClusterIP Service remain live, but their ServiceOffer was deliberately deleted. The raw API is internal-only and must not be republished or advertised.
 - The real Agent CR `agent-canary402/canary402` is Ready, uses Hermes with pinned model `openrouter/auto`, and follows `agent/objective.md`.
 - The Agent's isolation policy is extended only to `llm` pods labeled `app.kubernetes.io/name=canary402` on TCP 8080 by `deploy/agent-egress.yaml`.
-- The `agent-canary402/canary402` ServiceOffer is the only public product. It is Ready as `type=agent` at `/services/canary402-agent`, priced at `0.001 USDC` on Base mainnet.
+- The `agent-canary402/canary402` ServiceOffer is the only public product. It is Ready as `type=agent` on the dedicated hostname, priced at `0.001 USDC` on Base mainnet. The canonical operation is `/v1/chat/completions`; `/services/canary402-agent/v1/chat/completions` remains a shared-origin compatibility alias.
 - A direct authenticated Agent run invoked the Canary402 API successfully and returned `PROBE_PASS`, score 100, coverage 40%, report `76b56cd0a830d0779ecb7cdd86259856`.
-- Public `/`, `/openapi.json`, `/.well-known/agent-registration.json`, and the Agent endpoint are the intended public surface. The removed `/services/canary402` API routes must return `404`. `/.well-known/x402` is not exposed on the shared v0.13 storefront and returns `404`.
-- Public unpaid Agent requests at `/services/canary402-agent/v1/chat/completions` return a valid x402 v2 `402` challenge whose metadata advertises Hermes and `openrouter/auto`.
+- Public `/`, `/openapi.json`, `/.well-known/x402`, `/.well-known/agent-registration.json`, and the Agent endpoint are the intended public surface. The removed `/services/canary402` API routes must return `404`.
+- Public unpaid Agent requests at `/v1/chat/completions` and the compatibility alias return a valid x402 v2 `402` challenge with an HTTPS resource URL, Base mainnet, canonical USDC, and amount `1000`.
 - The primary identity is Base-mainnet ERC-8004 Agent ID `59094`, owned by the signer wallet and matching the x402 revenue network. Mint transaction: `0xa23a51b8a6beb357fd798864b2fd1ca0b97a80f7ca2f66b3ef47b25fadb6fcf5`. The same wallet retains legacy Base Sepolia Agent ID `8104`.
 - A real paid call to the public Agent succeeded for `0.001` Base Sepolia test USDC and produced report `3616014252977a40a71fabcfb460f9c7`; settlement transaction: `0x8dd8842556ea4a4f7a07fbd45d6647cd769370ed326dd921317d93de4026f91b`.
 - A real downstream audit paid another participant's CGT service `0.02` Base mainnet USDC and produced report `b19ad52a37a23132d69ee5d4536fb135`, `PASS`, score/coverage 100; settlement transaction: `0x9eb237c760b8ac34dcebed5a0722c0db155e4a1d04705e3956841a0d3ff1431c`.
@@ -81,7 +82,8 @@ The remote signer owns the wallet key. Canary402 only calls its typed-data signi
 - The deployed `0.2.2-dev` API rejects IPv4-mapped CGNAT targets such as `https://[::ffff:100.64.0.1]/` with HTTP 400 before connecting or authorizing payment; standard NAT64 prefixes are blocked as well.
 - A live no-spend SpecSmith review of the public Agent endpoint produced report `433d427e0fba2283a5166af695b7dea7`: `PROBE_PASS`, score 100, `spec_review.status=READY`, all discovery documents valid, exact challenge-resource match, Bazaar input/output schemas present, repair proposals generated, and `payment.attempted=false`.
 - Witness-style signatures and onchain attestations are intentionally outside Canary402's current scope; reports are point-in-time evidence, not trust attestations.
-- x402scan successfully registered `1/1` resources after consolidation to the one-Agent Base-mainnet configuration. Its only warning was missing generated OpenAPI `info.contact.email`, which is optional for indexing but used for ownership/contact customization.
+- After the v0.14 dedicated-origin migration, x402scan successfully registered `1/1` current resources and deprecated one stale shared-origin resource. Its only warning was missing generated OpenAPI `info.contact.email`, which is optional for indexing but used for ownership/contact customization.
+- A post-migration internal Agent request returned exactly `CANARY402_V014_OK` through `openrouter/auto`; the deterministic API health remained fully enabled.
 
 ## Architecture
 
@@ -97,7 +99,6 @@ Important files:
 - `internal/canary/httpapi.go`: HTTP API and local OpenAPI document.
 - `deploy/k8s.yaml`: hardened Kubernetes Deployment, Service, and reports PVC.
 - `deploy/agent-egress.yaml`: narrowly scoped egress from the Agent namespace to the Canary402 API only.
-- `deploy/x402-llm-reference-grant.yaml`: cross-namespace grants required by the Agent's x402 verifier and skill routes.
 - `agent/objective.md`: Hermes Agent objective, tool contract, and downstream-payment safety rules.
 - `scripts/deploy-local.sh`: image build/import and cluster deployment.
 - `scripts/publish-agent.sh`: idempotently creates/updates the Agent, applies egress, reconciles its Base-mainnet `type=agent` offer, and activates the existing Base Agent ID without minting.
@@ -134,7 +135,7 @@ The Agent is the only paid product. The raw API is an internal tool. Inbound Age
 - `POST /audit`: internal Agent tool; direct operator access is only through the cluster or a port-forward.
 - `GET /reports/{id}`: internal persisted report.
 - `GET /health`: internal health endpoint.
-- `GET /openapi.json`: internal API description; the public shared origin exposes Obol's Agent storefront description and discovery bundle.
+- `GET /openapi.json`: internal API description; the public dedicated origin exposes Obol's per-Agent OpenAPI and discovery bundle.
 
 `POST /audit` accepts the existing payment/delivery fields plus:
 
@@ -151,7 +152,7 @@ The MVP supports:
 - `exact` scheme
 - EIP-3009 `TransferWithAuthorization`
 - Current standard header transport: `PAYMENT-REQUIRED` → `PAYMENT-SIGNATURE` → `PAYMENT-RESPONSE`
-- Obol v0.13 compatibility transport: JSON 402 body → `X-PAYMENT` → `X-PAYMENT-RESPONSE`
+- Obol legacy compatibility transport: JSON 402 body → `X-PAYMENT` → `X-PAYMENT-RESPONSE`
 - canonical USDC on Base (`eip155:8453`)
 - canonical USDC on Base Sepolia (`eip155:84532`)
 - JSON `GET` and `POST` targets
@@ -232,33 +233,33 @@ The permanent tunnel and Agent ServiceOffer are active. Reproduce or verify only
 make sell-agent
 ```
 
-This creates/updates the real Agent, reconciles `0.001 USDC` on Base mainnet, publishes `/services/canary402-agent/v1/chat/completions`, and activates Base Agent ID `59094`. The safety check enables offer registration only when the identity and payment networks match.
+This creates/updates the real Agent, reconciles `0.001 USDC` on Base mainnet, binds the dedicated hostname, publishes `/v1/chat/completions` plus the shared-origin compatibility alias, persists the complete resume ledger, and activates Base Agent ID `59094`. The safety check enables offer registration only when the identity and payment networks match.
 
 There is deliberately no `make sell` or HTTP publication script. Use a direct port-forward for API development. Do not recreate `llm/canary402` as a ServiceOffer without an explicit product decision.
 
 The dashboard-managed Cloudflare public hostname routes to `http://traefik.traefik.svc.cluster.local:80`. Tunnel setup used the supported connector-token path from `.env`; never reveal or retype that token into documentation.
 
-Important v0.13 workarounds:
+Obol v0.14 native routing details:
 
-1. Do not combine `--max-in-flight` and `--rps` if an HTTP offer is ever tested. The controller puts both limit types in one Traefik Middleware that Traefik 3.6.6 rejects while the offer can still report Ready.
-2. `obol tunnel setup` created `traefik/tunnel-storefront` as a catch-all for the hostname. Retain the storefront at `/` and use the canonical Agent path.
-3. Cloudflare terminates TLS before the in-cluster gateway. `deploy/public-tunnel-routes.yaml` restores `X-Forwarded-Proto: https` and the public host before requests reach the verifier, preventing `http://` challenge resource URLs.
-4. `--description` cannot be used with `--no-register` in v0.13 even though CLI help says descriptions also feed the payment page/storefront. The scripts patch a concise registration description only after an existing Agent ID is available.
+1. `spec.hostname=andrei-obol-agent.dvlabs.dev` gives Canary402 a dedicated origin with root discovery documents and `/v1/chat/completions` as its canonical operation.
+2. v0.14 supplies the HTTPS resource handling and namespace-qualified ReferenceGrant. The deleted `deploy/public-tunnel-routes.yaml` and `deploy/x402-llm-reference-grant.yaml` must not be recreated.
+3. The publish script tolerates the rc0 edge where `obol tunnel hostname add` successfully patches `spec.hostname` and then exits nonzero because the tunnel already knows the hostname.
+4. Raw registration and hostname patches do not refresh rc0's on-disk offer ledger. The final no-price-change `obol sell update` is required so a future `obol stack up` does not revert them.
 
 x402scan is separate from the ERC-8004 identity. The permanent origin is registered with one resource. Never register `obol.stack`, localhost, or a temporary `trycloudflare.com` URL.
 
-## Obol v0.13 integration details
+## Obol v0.14 integration details
 
 - Historical HTTP-offer lesson: `obol sell http --namespace llm` sets both the offer and upstream namespaces; declaring any route makes the table exhaustive; more-specific routes beat wildcards.
-- The shared public origin exposes `/openapi.json`, `/.well-known/agent-registration.json`, and the canonical Agent path. It does not expose `/.well-known/x402`; the OpenAPI document is the working discovery surface.
+- The dedicated public origin exposes `/openapi.json`, `/.well-known/x402`, `/.well-known/agent-registration.json`, and `/v1/chat/completions`; the old `/services/canary402-agent/v1/chat/completions` path remains an alias.
 - `--no-register` skips ERC-8004 registration but does not stop the CLI from activating a quick tunnel.
-- Offers created with `--no-register` can later use an existing `AgentIdentity`; activation and minting are distinct operations in v0.13.
-- In v0.13, use a single gateway limit type per offer; two limit flags create a Traefik-invalid multi-type Middleware.
+- Offers created with `--no-register` can later use an existing chain-scoped `AgentIdentity`; activation and minting remain distinct operations.
+- v0.14 requires a real 2xx upstream health response, splits gateway limit middleware types, scopes ERC-8004 IDs by chain, and gates published status on Traefik's observed generation.
 - The Obol verifier exposes authenticated `X-Payment-Payer` to the upstream on paid routes. Do not trust a client-supplied copy when bypassing the gate locally.
 
 ## Obol documentation and product feedback already found
 
-Preserve these findings for the final hackathon feedback:
+Preserve these findings for the final hackathon feedback. Items below describe the v0.13 experience; v0.14.0-rc0 explicitly fixed the rate-limit middleware, stale tunnel route in the normal bind flow, 2xx health requirement, objective-description leak, ReferenceGrant collision, HTTPS resource URL, offer activation, testnet x402scan diagnostics, and chain-scoped Agent IDs. Retain the original evidence while distinguishing fixed behavior from current RC issues:
 
 1. The Quickstart still describes OpenClaw as the primary/default agent and `llmspy`; v0.13 defaults to Hermes and LiteLLM, with OpenClaw as an alternative.
 2. The versioned Quickstart example still shows the obsolete `v0.1.0` release.
@@ -303,15 +304,24 @@ Preserve these findings for the final hackathon feedback:
 41. `obol sell register --endpoint` describes its value as a service endpoint, but v0.13 appends `/.well-known/agent-registration.json` verbatim. Passing the actual Agent service path minted Base Agent ID 59094 with a payment-gated `agentURI`. Rerunning with the storefront origin safely used the idempotent `setAgentURI` path, but the help should say “origin” and reject endpoints containing a path.
 42. Base registration again completed while the optional `x402` metadata follow-up failed: the initial mint reverted with custom error `0x7e273289`, and the URI-correction rerun hit `nonce too low`. The CLI correctly retained success, but should sequence/refresh nonces and report metadata as optional without making the operator question the NFT mint.
 
+New v0.14.0-rc0 migration findings:
+
+43. The installer honored `OBOL_NONINTERACTIVE=true` for some operations but still prompted for Ollama and whether to start the cluster. Fully unattended upgrades remain unreliable.
+44. Running `obol stack init --force` while the existing k3d cluster was active treated that cluster's own ports 80/8080/443/8443 as conflicts and persisted new 65002/65003 mappings. Stopping the existing cluster, re-running init with the same backend, and starting it again restored correct durable mappings. Same-cluster ports should be excluded from conflict detection.
+45. After both rc0 `stack up` runs, replaying the recorded Agent failed with `metadata.resourceVersion: Invalid value: 0: must be specified for an update`. The existing Agent remained Ready, but a destroyed/recreated cluster would depend on this replay path. Persisted Agent manifests should strip server-managed metadata before apply, as ServiceOffer ledgers do.
+46. The first rc0 `stack up` replayed the old `--no-register` ServiceOffer ledger and disabled registration even though `AgentIdentity` correctly retained Base ID 59094 and Sepolia ID 8104. `obol sell register --network base` restored the live flag without minting, but did not refresh the persisted ledger. A no-price-change `obol sell update` was required to make the fix survive another restart.
+47. `obol tunnel hostname add <existing-host> --offer ...` patched `spec.hostname` successfully, then returned exit code 1 with “already a tunnel hostname” and did not remove the stale `tunnel-storefront` catch-all. The dedicated route reconciled, but the stale route required manual deletion. Existing-host binding should be a successful idempotent operation and run storefront cleanup.
+48. Dedicated `/.well-known/x402` currently describes the offer resource as the origin root while its OpenAPI correctly advertises `/v1/chat/completions`. x402scan accepted the OpenAPI operation, but the two discovery surfaces should either agree or document the distinction.
+
 ## Registration state
 
 - Base-mainnet ERC-8004 Agent ID: `59094`; registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`; mint transaction `0xa23a51b8a6beb357fd798864b2fd1ca0b97a80f7ca2f66b3ef47b25fadb6fcf5`.
 - Its agentURI correction transaction is `0x4727585e079ae2b06f6faa2a96c0aad8c4c17027c1d409d5ed2979f9aebad60f`; the URI resolves to the public root registration document.
 - Legacy Base Sepolia Agent ID: `8104`; registry `0x8004A818BFB912233c491871b3d84c89A494BD9e`; mint transaction `0xdf47245cdceda5a7849485cb7ab86f00dec6b681636064fe39e73e7ff1c2c17e`.
 - The Base-paid Agent ServiceOffer should report `Registered=True` with Agent ID `59094`.
-- `obol sell register` is idempotent when the per-chain AgentIdentity status is correct. Never remove or overwrite those IDs; pass the storefront origin to `--endpoint` so a rerun updates URI rather than minting.
+- `obol sell register` is idempotent when the per-chain AgentIdentity status is correct. Never remove or overwrite those IDs; pass the storefront origin to `--origin` so a rerun verifies or updates the URI rather than minting.
 - The signing/payout wallet address is public, but its private key remains exclusively in the Obol remote signer. Never try to export it.
-- x402scan is a separate external listing. The old two-offer Base Sepolia attempt failed; the one-Agent Base-mainnet attempt succeeded with `1/1` resources.
+- x402scan is a separate external listing. The v0.14 dedicated-origin refresh succeeded with `1/1` resources and deprecated the prior shared-origin resource.
 
 ## Current next steps
 
